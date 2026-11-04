@@ -996,6 +996,7 @@ function viewLog() {
 // ---------- ships
 const shortLoc = x => { if (!x) return '–'; const parts = String(x).split(' - '); let l = parts[parts.length - 1] || x; if (/^station$/i.test(l.trim()) || /station/i.test(l)) return 'Benten Station'; return l.replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s*-?\s*orbit\s*$/i, '').trim() || x; };
 // FIO lists the Umbra/Katoa run as a flight to "Kichijo (UV-072) - ORBIT": treat it as an Umbra -> Katoa trip
+const kichH = () => (S().kich != null ? S().kich : 3);
 const isRunDest = x => /UV-072/.test(String(x || ''));
 function enrouteTo(s, sh, name) {
   const arr0 = sh.arr || (s.t + (sh.etaH || 0) * HR), to = shortLoc(sh.to);
@@ -1004,7 +1005,7 @@ function enrouteTo(s, sh, name) {
   const bs = ['Umbra', 'Katoa'].map(n => (s.bases || []).find(b => b.p === n)).filter(Boolean); const me = bs.find(b => b.p === name); if (!me) return null;
   const cargo = {};
   Object.entries(sh.cargo || {}).forEach(([t, n]) => { const u = bs.filter(b => usedTickers(b).includes(t)); if (!u.includes(me)) return; const w = b => Math.abs((b.net || {})[t] || 0) + 1e-6, tot = u.reduce((a, b) => a + w(b), 0); cargo[t] = n * w(me) / tot; });
-  return { arr: name === 'Umbra' ? arr0 : arr0 + legH('Umbra', 'Katoa') * HR, cargo };
+  const aU = arr0 + kichH() * HR; return { arr: name === 'Umbra' ? aU : aU + legH('Umbra', 'Katoa') * HR, cargo };
 }
 function deriveTrips() {
   const snaps = st.snaps.filter(s => s.ships && s.ships.length).slice().sort((a, b) => a.t - b.t); const trips = [], byFid = {};
@@ -1051,7 +1052,7 @@ const legSrc = (a, b) => (S().leg && S().leg[a + '>' + b] != null) ? 'set' : obs
 function shipFree(s, sh, now) {
   const arr = sh.arr || (s.t + (sh.etaH || 0) * HR), to = shortLoc(sh.to), at = Math.max(arr, now);
   const baseNames = (s.bases || []).map(b => b.p);
-  if (isRunDest(sh.to) && arr > now - 6e4) { const back = arr + (legH('Umbra', 'Katoa') + flightH('Katoa')) * HR; return { t: back, arr, to: 'Katoa', back }; }
+  if (isRunDest(sh.to) && arr > now - 6e4) { const back = arr + (kichH() + legH('Umbra', 'Katoa') + flightH('Katoa')) * HR; return { t: back, arr, to: 'Katoa', back }; }
   if (to === BEN || !baseNames.includes(to)) return { t: at, arr, to: BEN, back: null }; // no flight in the data: the ship sits at Benten
   return { t: at + flightH(to) * HR, arr, to, back: at + flightH(to) * HR };
 }
@@ -1146,7 +1147,7 @@ function forecastHtml() {
   const all = s.bases.filter(b => b.inv).map(b => b.p), bchips = all.map(p => '<button class="chip" data-fcb="' + esc(p) + '" aria-pressed="' + !off[p] + '">' + esc(p) + '</button>').join('');
   const sf = F.ships.map(sh => esc(sh.r.replace('AVI-', '')) + ' ' + (sh.cur.arr > F.now ? 'free at Benten about ' + fmtDT(sh.cur.back || sh.cur.arr) : 'at Benten or on its way back')).join('; ');
   const has = ORDER.every(p => all.includes(p) && !off[p]);
-  const combo = has ? '<div class="row" style="margin:8px 0"><label class="sub"><input type="checkbox" id="combo"' + (comboOn() ? ' checked' : '') + '> Send Umbra and Katoa on one trip (Umbra first)</label>' + (comboOn() ? '<span class="field"><label class="sub" for="legu">Umbra → Katoa hours (' + legSrc('Umbra', 'Katoa') + ')</label><input type="number" class="sm" id="legu" data-leg="Umbra>Katoa" step="0.5" min="0" value="' + legH('Umbra', 'Katoa') + '"></span>' : '') + '</div>' : '';
+  const combo = has ? '<div class="row" style="margin:8px 0"><label class="sub"><input type="checkbox" id="combo"' + (comboOn() ? ' checked' : '') + '> Send Umbra and Katoa on one trip (Umbra first)</label>' + (comboOn() ? '<span class="field"><label class="sub" for="legu">Umbra → Katoa hours (' + legSrc('Umbra', 'Katoa') + ')</label><input type="number" class="sm" id="legu" data-leg="Umbra>Katoa" step="0.5" min="0" value="' + legH('Umbra', 'Katoa') + '"></span><span class="field"><label class="sub" for="kich">Kichijo orbit → Umbra hours' + (S().kich != null ? ' (set)' : ' (guess)') + '</label><input type="number" class="sm" id="kich" data-kich="1" step="0.5" min="0" value="' + kichH() + '"></span>' : '') + '</div>' : '';
   const nowRuns = F.runs.filter(r => !r.est), more = F.runs.filter(r => r.est);
   const planned = new Set(F.runs.flatMap(r => r.stops.map(x => x.p)));
   const none = Object.keys(F.info).filter(p => !planned.has(p)).map(p => esc(p) + ' ' + (F.info[p].pl.firstNow === Infinity ? 'lasts beyond the forecast' : 'lasts until ' + fmtDT(F.info[p].pl.firstNow))).join(', ');
@@ -1274,6 +1275,7 @@ view.addEventListener('change', async e => {
   }
   if (t.id === 'fcleave') { st.fcLeave = t.value ? new Date(t.value).getTime() : null; render(); return; }
   if (t.id === 'combo') { await saveSettings({ combo: t.checked }); render(); return; }
+  if (d.kich) { const v = Number(t.value); if (v >= 0) { await saveSettings({ kich: v }); render(); } return; }
   if (d.leg) { const v = Number(t.value); if (v >= 0) { await saveSettings({ leg: Object.assign({}, S().leg, { [d.leg]: v }) }); render(); } return; }
   if (t.id === 'sort') { st.sortBy = t.value; render(); return; }
   if (t.id === 'ship') { st.sup.ship = t.value; render(); return; }
