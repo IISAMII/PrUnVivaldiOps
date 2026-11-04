@@ -2,6 +2,7 @@
 const fs = require('fs'), path = require('path');
 const { opsSnapshot } = require('./collector.cjs');
 const { watch } = require('./watchcore.cjs');
+const claims = require('./claims.cjs');
 const D = path.join(__dirname, '..', 'docs', 'data'); fs.mkdirSync(D, { recursive: true });
 const rd = (f, d) => { try { return JSON.parse(fs.readFileSync(path.join(D, f), 'utf8')); } catch (e) { return d; } };
 const wr = (f, o) => fs.writeFileSync(path.join(D, f), JSON.stringify(o));
@@ -45,7 +46,13 @@ function addAlert(alerts, a, now) {
     if (!recent) alerts.unshift({ t: now, level: 'list', kind: 'run', key: 'run-fail', text: 'Snapshot job failed: ' + String(e.message).slice(0, 160), snapT: now });
     wr('alerts.json', alerts.slice(0, 80)); return;
   }
-  const settings = rd('settings.json', {}), meta = rd('meta.json', null);
+  const settings0 = rd('settings.json', {}), meta = rd('meta.json', null);
+  // worker claim times seen in the stock changes between FIO readings
+  const store = claims.update(rd('claimobs.json', {}), meta && meta.bases, s.bases);
+  const csum = claims.summary(store);
+  const settings = Object.assign({}, settings0, { claim: Object.assign({}, settings0.claim) });
+  for (const [p, c] of Object.entries(csum)) if (c.est != null && c.widthMin <= 60) settings.claim[p] = c.est;
+  wr('claimobs.json', store); wr('claims.json', csum);
   const found = watch(s, meta && meta.px ? { px: meta.px } : null, settings, now);
   for (const a of found) { const rec = { t: s.t, level: a.level, kind: a.kind, key: a.key, text: a.text, snapT: s.t }; if (addAlert(alerts, rec, now) && a.level === 'push') newPush.push(a.text); }
   // history
@@ -53,7 +60,7 @@ function addAlert(alerts, a, now) {
   const day = ams(s.t); const keepBook = !hist.some(x => x.book && ams(x.t) === day);
   hist.unshift(lean(s, keepBook));
   delete s.cashFio;
-  wr('latest.json', s); wr('history.json', thin(hist, now)); wr('alerts.json', alerts.slice(0, 80)); wr('meta.json', { t: s.t, px: s.px });
+  wr('latest.json', s); wr('history.json', thin(hist, now)); wr('alerts.json', alerts.slice(0, 80)); wr('meta.json', { t: s.t, px: s.px, bases: Object.fromEntries(s.bases.map(b => [b.p, { upd: new Date(b.upd).getTime(), inv: b.inv }])) });
   console.log('snapshot', new Date(s.t).toISOString(), 'alerts', found.length, 'push', newPush.length);
   for (const t of newPush) await push(t);
 })().catch(e => { console.error(e); process.exit(1); });
