@@ -59,7 +59,9 @@ function addAlert(alerts, a, now) {
   // history
   const hist = rd('history.json', []).filter(x => x.t !== s.t);
   const day = ams(s.t); const keepBook = !hist.some(x => x.book && ams(x.t) === day);
-  hist.unshift(lean(s, keepBook));
+  // only keep a new history point when FIO data changed (or 3 h passed); FIO updates only when Sam opens things in the game
+  const sig = x => JSON.stringify([(x.bases || []).map(b => [b.p, new Date(b.upd).getTime()]), (x.ships || []).map(h => [h.r, h.arr, h.cargo])]);
+  if (!(hist[0] && sig(hist[0]) === sig(s) && s.t - hist[0].t < 3 * HR)) hist.unshift(lean(s, keepBook));
   delete s.cashFio;
   wr('latest.json', s); wr('history.json', thin(hist, now)); wr('alerts.json', alerts.slice(0, 80)); wr('meta.json', { t: s.t, px: s.px, bases: Object.fromEntries(s.bases.map(b => [b.p, { upd: new Date(b.upd).getTime(), inv: b.inv }])) });
   console.log('snapshot', new Date(s.t).toISOString(), 'alerts', found.length, 'push', newPush.length);
