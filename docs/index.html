@@ -335,26 +335,26 @@ function prodEvents(b, t0, hz) {
     const orders = (l.orders || []).filter(o => !o.h); const running = orders.filter(o => o.s), queue = orders.filter(o => !o.s).map(o => Object.assign({}, o));
     const slots = running.map(o => o.e || t0);
     for (const o of running) if (o.e > t0) for (const [t, a] of Object.entries(o.o || {})) add(t, o.e, a);
-    while (slots.length < (l.cap || 1)) slots.push(t0);
-    for (const o of running.filter(o => o.r).sort((x, y) => (x.e || 0) - (y.e || 0))) queue.push(Object.assign({}, o, { av: o.e || t0 }));
+    // queued orders next to free slots are blocked (missing inputs): those slots stay idle until a running order frees one
+    if (!queue.length) while (slots.length < (l.cap || 1)) slots.push(t0);
     let g = 0;
     while (queue.length && g++ < 3000) {
-      slots.sort((x, y) => x - y); const o = queue.shift(), start = Math.max(slots[0], t0, o.av || 0); if (start > hz) break;
+      slots.sort((x, y) => x - y); const o = queue.shift(), start = Math.max(slots[0], t0); if (start > hz) break;
       const dur = o.d || HR;
       for (const [t, a] of Object.entries(o.i || {})) add(t, start, -a);
       for (const [t, a] of Object.entries(o.o || {})) add(t, start + dur, a);
-      slots[0] = start + dur; if (o.r) queue.push(Object.assign({}, o, { av: start + dur }));
+      slots[0] = start + dur; if (o.r) queue.push(o);
     }
   }
   return ev;
 }
-const simMemo = new Map();
+const simMemo = new Map(); let NOSHIP = false;
 function baseSim(b, now, h) {
-  const cl = h != null ? h : claimH(b.p), s0 = (typeof latest === 'function') ? latest() : null, key = b.p + '|' + b.upd + '|' + Math.floor(now / 6e4) + '|' + cl + '|' + (s0 ? s0.t : 0);
+  const cl = h != null ? h : claimH(b.p), s0 = (typeof latest === 'function') ? latest() : null, key = b.p + '|' + b.upd + '|' + Math.floor(now / 6e4) + '|' + cl + '|' + (s0 ? s0.t : 0) + (NOSHIP ? '|ns' : '');
   if (simMemo.has(key)) return simMemo.get(key); if (simMemo.size > 300) simMemo.clear();
   const t0 = Math.min(now, new Date(b.upd).getTime()), hz = now + 16 * DAY, ev = prodEvents(b, t0, hz);
   // cargo of ships on their way to this base arrives at the ship's arrival time
-  if (s0) (s0.ships || []).forEach(sh => { const arr = sh.arr || (s0.t + (sh.etaH || 0) * HR); const e = enrouteTo(s0, sh, b.p); if (e && e.arr > t0 && e.arr <= hz) Object.entries(e.cargo).forEach(([t, n]) => { (ev[t] = ev[t] || []).push([e.arr, n]); }); });
+  if (s0 && !NOSHIP) (s0.ships || []).forEach(sh => { const arr = sh.arr || (s0.t + (sh.etaH || 0) * HR); const e = enrouteTo(s0, sh, b.p); if (e && e.arr > t0 && e.arr <= hz) Object.entries(e.cargo).forEach(([t, n]) => { (ev[t] = ev[t] || []).push([e.arr, n]); }); });
   const sim = { b, t0, hz, ev, c: {}, cl }; simMemo.set(key, sim); return sim;
 }
 function ser(sim, t) {
@@ -376,7 +376,7 @@ function needFor(sim, t, arrT, endT) {
   return Math.max(0, Math.ceil(def - 1e-9));
 }
 function usedTickers(b) { const ts = new Set(Object.keys(b.wf || {})); (b.lines || []).forEach(l => (l.orders || []).forEach(o => Object.keys(o.i || {}).forEach(t => ts.add(t)))); return [...ts]; }
-function runouts(b, now) { const sim = baseSim(b, now); const rows = usedTickers(b).map(t => ({ t, ro: firstShort(sim, t, now), stock: Math.max(0, stockAt(sim, t, now)) })); rows.sort((a, c) => a.ro - c.ro); return { sim, rows }; }
+function runouts(b, now, noShip) { NOSHIP = !!noShip; let sim; try { sim = baseSim(b, now); } finally { NOSHIP = false; } const rows = usedTickers(b).map(t => ({ t, ro: firstShort(sim, t, now), stock: Math.max(0, stockAt(sim, t, now)) })); rows.sort((a, c) => a.ro - c.ro); return { sim, rows }; }
 
 // ---------- TODAY
 function alertsFor(s) {
@@ -436,7 +436,8 @@ function viewToday() {
   if (s.bases.every(b => b.inv)) {
     sup = '<div>' + s.bases.map(b => {
       const { rows } = runouts(b, now); const f = rows[0], rest = rows.slice(1, 4).filter(x => x.ro !== Infinity).map(x => esc(x.t) + ' ' + fmtDT(x.ro)).join(', ');
-      return '<div class="rw"><b>' + esc(b.p) + '</b><div>' + (f ? '<span class="' + (f.ro - now < 24 * HR ? 'critc' : '') + '">' + esc(f.t) + ' at ' + fmtDT(f.ro) + '</span> <span class="muted">' + rel(f.ro) + '</span>' : '–') + (rest ? '<div class="sub">Then ' + rest + '</div>' : '') + shipLine(b, f) + '</div></div>'; }).join('') + '</div>' +
+      let wo = ''; if ((s.ships || []).some(sh => { const e = enrouteTo(s, sh, b.p); return e && e.arr > now; })) { const nr = runouts(b, now, true).rows[0]; wo = nr && nr.ro !== Infinity ? '<div class="sub"><span class="' + (nr.ro - now < 24 * HR ? 'critc' : 'warnc') + '">Without the ship on its way:</span> ' + esc(nr.t) + ' at ' + fmtDT(nr.ro) + ' ' + rel(nr.ro) + '</div>' : '<div class="sub">Without the ship on its way: lasts the whole simulation.</div>'; }
+      return '<div class="rw"><b>' + esc(b.p) + '</b><div>' + (f ? '<span class="' + (f.ro - now < 24 * HR ? 'critc' : '') + '">' + esc(f.t) + ' at ' + fmtDT(f.ro) + '</span> <span class="muted">' + rel(f.ro) + '</span>' : '–') + (rest ? '<div class="sub">Then ' + rest + '</div>' : '') + wo + shipLine(b, f) + '</div></div>'; }).join('') + '</div>' +
       '<p class="sub">Simulated order by order. Workers take their consumables once a day; the claim time is set per base on the Supply tab (default ' + new Date(Date.UTC(2026, 0, 1) + claimH() * HR).toLocaleTimeString('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }) + ' your time). Production orders take inputs when they start.</p>';
   } else sup = '<p class="sub">The latest snapshot is in the old format. Log a new one for exact times.</p>';
   const ships = shipsBlock(s);
