@@ -468,8 +468,8 @@ function packages(s, pl) {
   const out = []; const wh = (s.warehouses || [])[0] || { items: {} }; const sh = shipOf(s);
   const have = t => (wh.items[t] || 0) + (st.sup.countShip && sh ? (sh.cargo[t] || 0) : 0);
   const cap = Object.keys(pl.total).filter(t => !st.sup.noBuy[t]);
-  const d = new Date(), z = n => String(n).padStart(2, '0'); const stamp = z(d.getMonth() + 1) + z(d.getDate()) + ' ' + z(d.getHours()) + z(d.getMinutes());
-  const CFG = 'Configure on Execution'; const act = pl.bases.filter(x => x.on && Object.keys(pl.per[x.b.p] || {}).length);
+  const d = new Date(Math.max(Date.now(), st.sup.leave || 0)), z = n => String(n).padStart(2, '0'); const stamp = z(d.getMonth() + 1) + z(d.getDate()) + ' ' + z(d.getHours()) + z(d.getMinutes());
+  const CFG = 'Configure on Execution'; const act = pl.bases.filter(x => x.on && Object.keys(pl.per[x.b.p] || {}).length); if (st.sup.only) act.sort((a, b) => st.sup.only.indexOf(a.b.p) - st.sup.only.indexOf(b.b.p)); const tag = act.map(y => y.b.p).join(' ');
   if (act.length) {
     const groups = [{ type: 'Manual', name: 'All supplies', materials: Object.fromEntries(cap.map(t => [t, pl.total[t]])) }];
     act.forEach(x => groups.push({ type: 'Manual', name: x.b.p + ' supplies', materials: Object.assign({}, pl.per[x.b.p]) }));
@@ -483,12 +483,12 @@ function packages(s, pl) {
       a2.push({ type: 'CX Buy', name: 'Place bids', group: 'Bid materials', exchange: 'CI1', allowUnfilled: true, buyPartial: true, useCXInv: true, priceLimits: Object.fromEntries(bidT.map(([t, p]) => [t, p])) });
       if (instT.length) a2.push({ type: 'CX Buy', name: 'Buy the rest at ask', group: 'Instant materials', exchange: 'CI1', allowUnfilled: false, buyPartial: true, useCXInv: true, priceLimits: Object.fromEntries(instT.map(t => [t, up3(pask(s.px, t) * 1.03)])) });
       const sv = bidT.reduce((a, [t, p]) => a + (pask(s.px, t) - p) * bq[t], 0);
-      out.push({ title: '0 · Place bids first', when: 'Places buy orders one price step above the top bid for ' + bidT.map(x => x[0]).join(', ') + ' (about ' + money(sv) + ' cheaper than ask if they all fill)' + (instT.length ? ' and buys the rest at ask' : '') + '. Run package 1 after the bids have filled; it then only buys what is still missing. Running it earlier buys the same goods again at ask.', json: { global: { name: 'Bids ' + act.map(x => x.b.p).join(' and ') + ' ' + stamp }, groups: g2, actions: a2 } });
+      out.push({ title: '0 · Place bids first', when: 'Places buy orders one price step above the top bid for ' + bidT.map(x => x[0]).join(', ') + ' (about ' + money(sv) + ' cheaper than ask if they all fill)' + (instT.length ? ' and buys the rest at ask' : '') + '. Run package 1 after the bids have filled; it then only buys what is still missing. Running it earlier buys the same goods again at ask.', json: { global: { name: stamp + ' ' + tag + ' 0 Bids' }, groups: g2, actions: a2 } });
     }
     actions.push({ type: 'Refuel', name: 'Refuel', origin: CFG, buyMissingFuel: true });
     act.forEach(x => actions.push({ type: 'MTRA', name: 'Load ' + x.b.p + ' supplies', group: x.b.p + ' supplies', origin: CFG, dest: CFG }));
-    out.push({ title: '1 · Load and send at Benten', when: 'Buys what is not in the Benten warehouse at ask (capped 3% above), refuels, then loads each base\'s supplies into the ship.', json: { global: { name: 'Load ' + act.map(x => x.b.p).join(' and ') + ' ' + stamp }, groups, actions } });
-    act.forEach(x => out.push({ title: '2 · At ' + x.b.p, when: 'Unloads the supplies into the base. Move the products yourself.', json: { global: { name: 'At ' + x.b.p + ' ' + stamp }, groups: [{ type: 'Manual', name: x.b.p + ' supplies', materials: Object.assign({}, pl.per[x.b.p]) }], actions: [{ type: 'MTRA', name: 'Unload supplies to base', group: x.b.p + ' supplies', origin: CFG, dest: CFG }] } }));
+    out.push({ title: '1 · Load and send at Benten', when: 'Buys what is not in the Benten warehouse at ask (capped 3% above), refuels, then loads each base\'s supplies into the ship.', json: { global: { name: stamp + ' ' + tag + ' 1 Load' }, groups, actions } });
+    act.forEach((x, ix) => out.push({ title: '2 · At ' + x.b.p, when: 'Unloads the supplies into the base. Move the products yourself.', json: { global: { name: stamp + ' ' + tag + ' ' + (2 + ix) + ' At ' + x.b.p }, groups: [{ type: 'Manual', name: x.b.p + ' supplies', materials: Object.assign({}, pl.per[x.b.p]) }], actions: [{ type: 'MTRA', name: 'Unload supplies to base', group: x.b.p + ' supplies', origin: CFG, dest: CFG }] } }));
   }
   const safe = x => String(x).normalize('NFKD').replace(/[^A-Za-z0-9 _]/g, ' ').replace(/\s+/g, ' ').trim() || 'Package';
   out.forEach(p => { const j = p.json; j.global.name = safe(j.global.name); (j.groups || []).forEach(g => g.name = safe(g.name)); (j.actions || []).forEach(a => { a.name = safe(a.name); if (a.group) a.group = safe(a.group); }); });
