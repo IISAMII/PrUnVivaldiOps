@@ -468,7 +468,7 @@ function packages(s, pl) {
   const out = []; const wh = (s.warehouses || [])[0] || { items: {} }; const sh = shipOf(s);
   const have = t => (wh.items[t] || 0) + (st.sup.countShip && sh ? (sh.cargo[t] || 0) : 0);
   const cap = Object.keys(pl.total).filter(t => !st.sup.noBuy[t]);
-  const d = new Date(Math.max(Date.now(), st.sup.leave || 0)), z = n => String(n).padStart(2, '0'); const stamp = z(d.getMonth() + 1) + z(d.getDate()) + ' ' + z(d.getHours()) + z(d.getMinutes());
+  const d = new Date(Math.max(Date.now(), st.sup.leave || 0)), z = n => String(n).padStart(2, '0'); const stamp = (st.sup.leave && st.sup.leave > Date.now() + 30 * 60000 ? 'Plan ' : 'Now ') + z(d.getMonth() + 1) + z(d.getDate()) + ' ' + z(d.getHours()) + z(d.getMinutes());
   const CFG = 'Configure on Execution'; const act = pl.bases.filter(x => x.on && Object.keys(pl.per[x.b.p] || {}).length); if (st.sup.only) act.sort((a, b) => st.sup.only.indexOf(a.b.p) - st.sup.only.indexOf(b.b.p)); const tag = act.map(y => y.b.p).join(' ');
   if (act.length) {
     const groups = [{ type: 'Manual', name: 'All supplies', materials: Object.fromEntries(cap.map(t => [t, pl.total[t]])) }];
