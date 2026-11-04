@@ -354,7 +354,7 @@ function baseSim(b, now, h) {
   if (simMemo.has(key)) return simMemo.get(key); if (simMemo.size > 300) simMemo.clear();
   const t0 = Math.min(now, new Date(b.upd).getTime()), hz = now + 16 * DAY, ev = prodEvents(b, t0, hz);
   // cargo of ships on their way to this base arrives at the ship's arrival time
-  if (s0) (s0.ships || []).forEach(sh => { const arr = sh.arr || (s0.t + (sh.etaH || 0) * HR); if (arr > t0 && arr <= hz && sh.to && shortLoc(sh.to) === b.p) Object.entries(sh.cargo || {}).forEach(([t, n]) => { (ev[t] = ev[t] || []).push([arr, n]); }); });
+  if (s0) (s0.ships || []).forEach(sh => { const arr = sh.arr || (s0.t + (sh.etaH || 0) * HR); const e = enrouteTo(s0, sh, b.p); if (e && e.arr > t0 && e.arr <= hz) Object.entries(e.cargo).forEach(([t, n]) => { (ev[t] = ev[t] || []).push([e.arr, n]); }); });
   const sim = { b, t0, hz, ev, c: {}, cl }; simMemo.set(key, sim); return sim;
 }
 function ser(sim, t) {
@@ -426,8 +426,8 @@ function viewToday() {
   let sup;
   let FC = null; try { if ((s.ships || []).length) FC = forecast(s, 168); } catch (x) {}
   const shipLine = (b, f) => {
-    const en = (s.ships || []).filter(sh => shortLoc(sh.to) === b.p && (sh.arr || (s.t + (sh.etaH || 0) * HR)) > now), out = [];
-    en.forEach(sh => out.push('<span class="pos">On its way:</span> ' + esc(sh.r.replace('AVI-', '')) + ' arrives ' + fmtDT(sh.arr || (s.t + sh.etaH * HR))));
+    const en = (s.ships || []).map(sh => ({ sh, e: enrouteTo(s, sh, b.p) })).filter(x => x.e && x.e.arr > now), out = [];
+    en.forEach(x => out.push('<span class="pos">On its way:</span> ' + esc(x.sh.r.replace('AVI-', '')) + ' arrives ' + fmtDT(x.e.arr)));
     const r = FC && FC.runs.find(x => !x.est && x.stops.some(y => y.p === b.p));
     if (r) { const y = r.stops.find(z => z.p === b.p); out.push('<span class="' + (y.downH > 0.05 ? 'critc' : 'pos') + '">Planned:</span> ' + esc(r.label) + ' leaves ' + (r.dep <= now + 6e4 ? 'now' : fmtDT(r.dep)) + ', arrives ' + fmtDT(y.arr) + (y.downH > 0.05 ? ' <span class="critc">(down about ' + Math.round(y.downH) + ' h)</span>' : ' (in time)')); }
     else if (FC && f && f.ro !== Infinity && f.ro < now + 7 * DAY && !en.length) out.push('<span class="warnc">No trip planned</span> before it runs short');
@@ -995,6 +995,17 @@ function viewLog() {
 
 // ---------- ships
 const shortLoc = x => { if (!x) return '–'; const parts = String(x).split(' - '); let l = parts[parts.length - 1] || x; if (/^station$/i.test(l.trim()) || /station/i.test(l)) return 'Benten Station'; return l.replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s*-?\s*orbit\s*$/i, '').trim() || x; };
+// FIO lists the Umbra/Katoa run as a flight to "Kichijo (UV-072) - ORBIT": treat it as an Umbra -> Katoa trip
+const isRunDest = x => /UV-072/.test(String(x || ''));
+function enrouteTo(s, sh, name) {
+  const arr0 = sh.arr || (s.t + (sh.etaH || 0) * HR), to = shortLoc(sh.to);
+  if (to === name) return { arr: arr0, cargo: sh.cargo || {} };
+  if (!isRunDest(sh.to)) return null;
+  const bs = ['Umbra', 'Katoa'].map(n => (s.bases || []).find(b => b.p === n)).filter(Boolean); const me = bs.find(b => b.p === name); if (!me) return null;
+  const cargo = {};
+  Object.entries(sh.cargo || {}).forEach(([t, n]) => { const u = bs.filter(b => usedTickers(b).includes(t)); if (!u.includes(me)) return; const w = b => Math.abs((b.net || {})[t] || 0) + 1e-6, tot = u.reduce((a, b) => a + w(b), 0); cargo[t] = n * w(me) / tot; });
+  return { arr: name === 'Umbra' ? arr0 : arr0 + legH('Umbra', 'Katoa') * HR, cargo };
+}
 function deriveTrips() {
   const snaps = st.snaps.filter(s => s.ships && s.ships.length).slice().sort((a, b) => a.t - b.t); const trips = [], byFid = {};
   snaps.forEach(s => (s.ships || []).forEach(sh => {
@@ -1040,6 +1051,7 @@ const legSrc = (a, b) => (S().leg && S().leg[a + '>' + b] != null) ? 'set' : obs
 function shipFree(s, sh, now) {
   const arr = sh.arr || (s.t + (sh.etaH || 0) * HR), to = shortLoc(sh.to), at = Math.max(arr, now);
   const baseNames = (s.bases || []).map(b => b.p);
+  if (isRunDest(sh.to) && arr > now - 6e4) { const back = arr + (legH('Umbra', 'Katoa') + flightH('Katoa')) * HR; return { t: back, arr, to: 'Katoa', back }; }
   if (to === BEN || !baseNames.includes(to)) return { t: at, arr, to: BEN, back: null }; // no flight in the data: the ship sits at Benten
   return { t: at + flightH(to) * HR, arr, to, back: at + flightH(to) * HR };
 }
