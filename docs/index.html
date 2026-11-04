@@ -1116,7 +1116,7 @@ function segsFor(F, sh) {
     const aU = c.arr + kichH() * HR, aK = aU + legH('Umbra', 'Katoa') * HR;
     seg('Benten', 'Kichijo', null, c.arr, 'In flight', '', 'Flight to Kichijo; abort it in orbit and fly on to Umbra.');
     seg('Kichijo', 'Umbra', c.arr, aU, 'Next', '', 'Set "Kichijo orbit → Umbra hours" if this is off.');
-    seg('Umbra', 'Katoa', aU, aK, 'Next', '', 'Via Kichijo; uses the Umbra → Katoa hours.');
+    seg('Umbra', 'Kichijo → Katoa', aU, aK, 'Next', '', 'Umbra is far from everything, so the ship loops via Kichijo again. The time is the Umbra → Katoa hours setting; make it the full time including the Kichijo loop.');
     seg('Katoa', 'Benten', aK, c.back, 'Return', '', 'Assumes you turn the ship around right away.');
   } else if (c.arr > now) { seg('Benten', shortLoc(c.to), null, c.arr, 'In flight', '', 'Cargo already on its way is counted in the base forecast.'); if (c.back) seg(shortLoc(c.to), 'Benten', c.arr, c.back, 'Return', '', 'Assumes you turn the ship around right away.'); }
   sh.runs.forEach(r => { let t = r.dep, prev = 'Benten';
