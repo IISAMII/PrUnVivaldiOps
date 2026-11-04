@@ -38,15 +38,16 @@ function addAlert(alerts, a, now) {
   const now = Date.now(); const alerts = rd('alerts.json', []).filter(x => !(x.key === 'run-fail' && /secret missing/.test(x.text))); let newPush = [];
   if (process.env.TEST_PUSH === 'true') await push('Test message from Vivaldi Ops. If you see this, phone alerts work.');
   const KEY = process.env.FIO_KEY;
-  let s;
+  let s; const meta = rd('meta.json', null);
   try { if (!KEY) throw new Error('FIO_KEY secret missing'); s = await opsSnapshot(KEY, USER); }
   catch (e) {
     console.log('snapshot failed:', e.message);
     const recent = alerts.some(x => x.key === 'run-fail' && now - x.t < 6 * HR);
-    if (!recent) { const msg = 'Snapshot job failed: ' + String(e.message).slice(0, 160); alerts.unshift({ t: now, level: 'push', kind: 'run', key: 'run-fail', text: msg, snapT: now }); await push(msg + '. Stale FIO data does not cause this; check the key or the Actions tab.'); }
+    const lastOk = meta ? meta.t : 0; // one-off outages (FIO 5xx) only push when no snapshot succeeded for 2 h
+    if (!recent && (!KEY || !meta || now - lastOk > 2 * HR)) { const msg = 'Snapshot job failed: ' + String(e.message).slice(0, 160); alerts.unshift({ t: now, level: 'push', kind: 'run', key: 'run-fail', text: msg, snapT: now }); await push(msg + '. Stale FIO data does not cause this; check the key or the Actions tab.'); }
     wr('alerts.json', alerts.slice(0, 80)); return;
   }
-  const settings0 = rd('settings.json', {}), meta = rd('meta.json', null);
+  const settings0 = rd('settings.json', {});
   // worker claim times seen in the stock changes between FIO readings
   const store = claims.update(rd('claimobs.json', {}), meta && meta.bases, s.bases);
   const csum = claims.summary(store);

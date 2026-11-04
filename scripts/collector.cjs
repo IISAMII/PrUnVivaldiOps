@@ -1,6 +1,6 @@
 async function opsSnapshot(KEY, USER) {
   const BOMT = ["BBH","BDE","BSE","BTA","C","COF","DW","EXO","H","HCP","HSE","KOM","LBH","LDE","LSE","LTA","MAI","MCG","MGS","OVE","PG","PSL","PT","PWO","RAT","RCO","REP","TRU"];
-  const fio = async p => { const r = await fetch('https://rest.fnar.net' + p, { headers: { Authorization: KEY } }); if (!r.ok) throw new Error(p + ' HTTP ' + r.status); return r.json(); };
+  const fio = async p => { let err; for (let i = 0; i < 4; i++) { try { const r = await fetch('https://rest.fnar.net' + p, { headers: { Authorization: KEY } }); if (r.ok) return r.json(); err = new Error(p + ' HTTP ' + r.status); if (r.status < 500 && r.status !== 429) throw err; } catch (e) { err = e; if (/HTTP 4(?!29)/.test(e.message)) throw e; } await new Promise(z => setTimeout(z, 4000 * (i + 1))); } throw err; };
   const [user, burn, storage, ships, flights, cxos, sites, prod, cons, blds, whs, prices, recs] = await Promise.all([
     fio('/user/' + USER), fio('/fioweb/burn/user/' + USER), fio('/storage/' + USER), fio('/ship/ships/' + USER), fio('/ship/flights/' + USER),
     fio('/cxos/' + USER), fio('/sites/' + USER), fio('/production/' + USER), fio('/contract/allcontracts'),
