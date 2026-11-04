@@ -1,7 +1,5 @@
 name: snapshot
 on:
-  schedule:
-    - cron: '12,42 * * * *'
   workflow_dispatch:
     inputs:
       test_push:
