@@ -1,0 +1,1174 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vivaldi Ops</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: a ship's logbook. Four tabs: Today (what needs doing), Money (net worth, loans, sales), Bases (plan vs live), Log (snapshots). */
+:root {
+  --bg: #eff2f5; --surface: #ffffff; --ink: #14202b; --muted: #5a6b7b; --line: #d6dde4;
+  --accent: #0a6a85; --accent-ink: #ffffff;
+  --good: #1d8449; --warn: #a96a0c; --crit: #c0392b;
+  --good-bg: #e2f1e8; --warn-bg: #f7ecd6; --crit-bg: #f8e0dd;
+  --s-built: #1d8449; --s-approved: #0a6a85; --s-candidate: #7a5ec9; --s-idea: #7b8794; --s-dropped: #b0b8c0;
+  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-body: "Barlow", system-ui, sans-serif;
+  --font-num: "IBM Plex Mono", ui-monospace, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1318; --surface: #151d25; --ink: #e5ecf2; --muted: #8a9aaa; --line: #26333f;
+    --accent: #4cc3e0; --accent-ink: #06222b;
+    --good: #4cc38a; --warn: #e3a840; --crit: #ef6b5b;
+    --good-bg: #14301f; --warn-bg: #33290f; --crit-bg: #3a1a17;
+    --s-built: #4cc38a; --s-approved: #4cc3e0; --s-candidate: #a58cf0; --s-idea: #8a9aaa; --s-dropped: #5a6672;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1318; --surface: #151d25; --ink: #e5ecf2; --muted: #8a9aaa; --line: #26333f;
+  --accent: #4cc3e0; --accent-ink: #06222b;
+  --good: #4cc38a; --warn: #e3a840; --crit: #ef6b5b;
+  --good-bg: #14301f; --warn-bg: #33290f; --crit-bg: #3a1a17;
+  --s-built: #4cc38a; --s-approved: #4cc3e0; --s-candidate: #a58cf0; --s-idea: #8a9aaa; --s-dropped: #5a6672;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.45; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 18px 16px 48px; }
+header.top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-bottom: 12px; }
+h1 { font-family: var(--font-display); font-weight: 700; font-size: 32px; margin: 0; text-wrap: balance; }
+h2 { font-family: var(--font-display); font-weight: 700; font-size: 21px; margin: 0 0 8px; text-wrap: balance; }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.tab { font: 600 14px var(--font-body); padding: 7px 14px; border-radius: 6px; border: 1px solid var(--line); color: var(--ink); background: var(--surface); cursor: pointer; }
+.tab[aria-current="page"] { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+button:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.asof { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; min-width: 0; }
+.tile .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+.tile .v { font: 500 24px var(--font-num); font-variant-numeric: tabular-nums; margin-top: 2px; }
+.tile .s { color: var(--muted); font-size: 12.5px; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; min-width: 0; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; align-items: start; }
+.sub { color: var(--muted); font-size: 13px; margin: 2px 0 0; }
+.alerts { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.alert { display: grid; grid-template-columns: 74px 1fr; gap: 10px; padding: 8px 10px; border-radius: 6px; background: var(--surface); border: 1px solid var(--line); border-left: 5px solid var(--muted); align-items: baseline; }
+.alert.crit { border-left-color: var(--crit); background: var(--crit-bg); }
+.alert.warn { border-left-color: var(--warn); background: var(--warn-bg); }
+.alert.good { border-left-color: var(--good); }
+.alert b { font: 600 12px var(--font-body); text-transform: uppercase; letter-spacing: .05em; }
+.alert.crit b { color: var(--crit); } .alert.warn b { color: var(--warn); } .alert.good b { color: var(--good); }
+.alert span { min-width: 0; }
+.alert small { color: var(--muted); display: block; font-size: 12.5px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; font-variant-numeric: tabular-nums; }
+th:first-child, td:first-child { text-align: left; }
+th { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+td.n { font-family: var(--font-num); }
+tr:last-child td { border-bottom: 0; }
+.tablewrap { overflow-x: auto; }
+.pos { color: var(--good); } .neg { color: var(--crit); }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+input, select, textarea { font: 400 14px var(--font-body); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+input[type=number] { width: 150px; font-family: var(--font-num); }
+textarea { width: 100%; }
+button.act { font: 600 14px var(--font-body); padding: 7px 14px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink); cursor: pointer; }
+button.act.plain { background: var(--surface); color: var(--ink); border-color: var(--line); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: 500 13px var(--font-body); padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.bar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-bottom: 14px; }
+.bar .sp { flex: 1; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-left: 5px solid var(--stripe, var(--line)); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.card header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.card h3 { font-family: var(--font-display); font-weight: 700; font-size: 24px; margin: 0; line-height: 1.1; }
+.figs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 14px; margin: 0; }
+.figs div { min-width: 0; }
+.figs dt { color: var(--muted); font-size: 12px; }
+.figs dd { margin: 0; font: 500 18px var(--font-num); font-variant-numeric: tabular-nums; }
+.figs dd small { font: 400 12px var(--font-body); color: var(--muted); display: block; }
+.desc { margin: 0; font-size: 13.5px; }
+.live { border: 1px dashed var(--line); border-radius: 6px; padding: 8px 10px; display: grid; gap: 4px; font-size: 13.5px; }
+.live .t { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.outs { display: grid; gap: 5px; }
+.out { display: grid; grid-template-columns: 44px 1fr 92px; gap: 8px; align-items: center; font-size: 13px; }
+.out b { font: 500 13px var(--font-num); }
+.meter { height: 8px; background: var(--line); border-radius: 4px; position: relative; overflow: hidden; }
+.meter i { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: var(--good); }
+.meter i.warn { background: var(--warn); } .meter i.crit { background: var(--crit); }
+.out span { text-align: right; color: var(--muted); }
+.flags { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.flag { display: flex; gap: 6px; align-items: baseline; }
+.flag::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.flag.good::before { background: var(--good); } .flag.warn::before { background: var(--warn); } .flag.crit::before { background: var(--crit); }
+.note { width: 100%; min-height: 84px; resize: vertical; }
+.lbl { font-size: 12px; color: var(--muted); display: block; margin-bottom: 3px; }
+.pill { font: 600 12px var(--font-body); padding: 3px 9px; border-radius: 999px; color: var(--stripe); border: 1px solid var(--stripe); }
+.foot { color: var(--muted); font-size: 12.5px; margin-top: 12px; max-width: 80ch; }
+.foot p { margin: 0 0 6px; }
+.chart { width: 100%; height: auto; display: block; }
+.chart text { fill: var(--muted); font: 11px var(--font-body); }
+.chart .axis { stroke: var(--line); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+details > summary { cursor: pointer; font-weight: 600; }
+code, pre { font-family: var(--font-num); font-size: 12px; }
+@media (prefers-reduced-motion: no-preference) { .meter i { transition: width .3s; } }
+
+.field { display: grid; gap: 2px; }
+.field input, .field select { width: 100%; }
+input[type=number].sm, input[type=text].sm { width: 84px; }
+.dtw { position: relative; display: block; width: 180px; } .dtw #leave { width: 100%; padding-right: 36px; } .dtw .cal { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 15px; line-height: 1; pointer-events: none; } .dtw #leavepick { position: absolute; right: 0; top: 0; bottom: 0; width: 34px; min-height: 0; padding: 0; border: 0; background: transparent; opacity: 0; cursor: pointer; overflow: hidden; } .dtw #leavepick::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; cursor: pointer; }
+input[type=datetime-local] { font-family: var(--font-num); }
+.load { display: grid; gap: 6px; margin: 8px 0; }
+.load .l { display: grid; grid-template-columns: 56px 1fr 130px; gap: 8px; align-items: center; font-size: 13px; }
+.load .l span:last-child { text-align: right; font-family: var(--font-num); }
+.pk { border: 1px solid var(--line); border-radius: 8px; padding: 10px; display: grid; gap: 6px; background: var(--surface); }
+.pk textarea { font-family: var(--font-num); font-size: 11.5px; min-height: 90px; }
+.split { display: flex; height: 14px; border-radius: 4px; overflow: hidden; background: var(--line); }
+.split i { display: block; height: 100%; }
+.sS { background: var(--accent); } .sP { background: var(--good); } .sO { background: var(--muted); }
+.muted { color: var(--muted); }
+td.when { font-family: var(--font-body); }
+td.txt { text-align: left; white-space: normal; min-width: 230px; }
+.warnc { color: var(--warn); } .critc { color: var(--crit); }
+h3.sm { font: 600 16px var(--font-body); margin: 12px 0 6px; }
+
+.ships, .bcs { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); margin-bottom: 8px; }
+.shipcard, .bc { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: var(--surface); display: grid; gap: 8px; min-width: 0; align-content: start; }
+.bc.off { opacity: .55; }
+.kv { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; font-size: 13.5px; }
+.kv span { display: block; color: var(--muted); font-size: 12px; }
+.kv b { font: 500 14px var(--font-num); display: block; }
+.kv b.when { font-family: var(--font-body); font-weight: 500; }
+.rw { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 2px 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.rw:last-child { border-bottom: 0; }
+@media (max-width: 600px) { table { font-size: 13px; } th, td { padding: 5px 6px; white-space: normal; } .hide-s { display: none; } .tile .v { font-size: 21px; } }
+.cols { margin-bottom: 14px; }
+.alerts { margin-bottom: 4px; }
+details.panel > summary { cursor: pointer; }
+details.panel[open] > summary { margin-bottom: 10px; }
+.bcard { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px 12px 24px; overflow: hidden; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.bcard header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.bcard .roi { position: absolute; left: 0; top: 0; bottom: 0; width: 10px; background: var(--line); display: flex; align-items: flex-end; } .bcard .roi i { display: block; width: 100%; }
+.bcard .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; vertical-align: middle; background: var(--muted); } .bcard .dot.good { background: var(--good); } .bcard .dot.warn { background: var(--warn); } .bcard .dot.crit { background: var(--crit); }
+.bcard h3 { font-family: var(--font-display); font-weight: 700; font-size: 24px; margin: 0; line-height: 1.1; }
+.bcard .big { display: grid; justify-items: start; } .bcard .big b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.bcard .spk { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bcard h3.sm { font: 600 15px var(--font-body); margin: 12px 0 4px; }
+.bcard summary { cursor: pointer; font-weight: 600; } .bcard details[open] > summary { margin-bottom: 6px; }
+.bcard .rw { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; } .bcard .rw .n { text-align: right; }
+.bcard .kv { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+.bcard .kv span.pos, .bcard .kv span.neg { display: inline; }
+.slots { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; } .slot { border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px; font: 500 13px var(--font-num); background: var(--surface); white-space: nowrap; } .slot.empty { color: var(--muted); border-style: dashed; background: transparent; font-family: var(--font-body); }
+.badge { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; padding: 1px 6px; border-radius: 5px; background: var(--line); color: var(--ink, inherit); margin-right: 6px; } .badge.crit { background: var(--crit); color: #fff; }
+.nrow { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line); align-items: flex-start; } .nrow:last-child { border-bottom: 0; } .nrow .n { white-space: nowrap; }
+.badge.ex { background: var(--warn); color: #1a1405; } .badge.good { background: var(--good); color: #06210f; }
+.runb { margin: 0 0 14px; padding-bottom: 8px; border-bottom: 1px solid var(--line); } .runb:last-of-type { border-bottom: 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Vivaldi Ops</h1>
+    <nav class="tabs" aria-label="Sections" id="tabs"></nav>
+  </header>
+  <div id="view"></div>
+  <div class="foot"><p id="sync"></p></div>
+</div>
+<script>
+const OPS = {"asof":"3 Nov 2026","ioAsof":"3 Nov 2026 12:44 UTC","prices":{"ALE":[1750,1660,1709.78,1592.81,819.29],"AMM":[164,150,158.56,147.24,3550],"DW":[139,138,139.65,140.95,41023.43],"EXO":[395,375,392.38,405.53,1101.86],"GRN":[505,490,493.42,491.38,2412.86],"HER":[3380,2910,3073.05,3141.45,861.57],"HOP":[2950,2700,2938.81,3074.2,334.57],"KOM":[1170,1150,1138.72,1176.12,1841.86],"PT":[729,581,611.66,681.54,2345.14],"RAT":[239,226,234.99,241.7,39913.14],"REP":[925,901,935.39,911.27,372.29],"COF":[1130,1080,1145.33,1103.4,2410.14],"DDT":[4100,3880,3955.82,4002.49,630.86],"H2O":[73.9,67.2,69.8,68.39,59444.57],"OVE":[198,182,195.28,194.1,7209.71],"PWO":[400,395,393.02,414.59,2409.14],"C":[1100,1030,1099.34,1108,7209.57],"CL":[5280,5100,5158.27,5297.31,610.43],"EPO":[225,210,208.61,211.07,33347.29],"H":[136,130,135.42,134.79,16002.71],"HAL":[433,400,412.03,389.81,4422.43],"NA":[25.2,25.1,25.11,25.67,2094],"O":[104,100,100.98,106.59,8302.71],"KV":[32500,31000,32818.47,34233.23,58],"NL":[7190,6470,7242.65,7226.78,432.14],"PG":[54.1,53.2,54,53.88,93162.14],"PSL":[5220,5000,5150.55,5232.26,75.86],"PSS":[1560,1460,1519.87,1577.31,346.14],"TCL":[3940,3110,3782.5,3951.75,1074.29],"BSE":[3450,3200,3238.91,2942.56,1261.71],"BBH":[5900,5040,5630.99,5158.9,1741.14],"BDE":[3730,3600,4085.13,4095.61,585.71],"TRU":[580,470,615.06,656.45,328.29],"LSE":[11500,10700,11650.64,11963.77,122.14],"LDE":[13800,13700,14051.38,13771.18,274.43],"LBH":[6480,5970,6259.83,5895.46,224.71],"LTA":[5500,4970,5375.2,4996.17,170.43],"BTA":[2640,1180,2593.92,2542.63,125.86],"RTA":[23000,21900,21788.46,21766.14,29.71],"RSE":[34400,30000,30321.87,29418.53,85.57],"MCG":[48,46.5,49.21,49.21,11761.71],"HSE":[19300,17000,18589.05,18589.05,null]},"bld":{"BMP":{"a":12,"c":"BBH:4 BDE:2 BSE:6","w":[100,0,0,0,0]},"CHP":{"a":18,"c":"BSE:3 BBH:3 BDE:3 TRU:4","w":[20,60,0,0,0]},"CLF":{"a":37,"c":"BSE:2 LSE:2 TRU:8 LDE:4","w":[0,40,0,0,0]},"CM":{"a":25,"c":"PSL:12 LTA:4 LDE:4 TRU:8 LSE:4","w":[0,0,0,0,0]},"FER":{"a":25,"c":"LSE:2 LDE:2 LBH:2 TRU:5","w":[0,60,0,0,0]},"FRM":{"a":30,"c":"BSE:4 BBH:4","w":[50,0,0,0,0]},"HB1":{"a":10,"c":"BBH:4 BTA:1 BSE:2 BDE:2","w":[0,0,0,0,0]},"HB2":{"a":12,"c":"BTA:2 TRU:2 BDE:2 BBH:2 BSE:2","w":[0,0,0,0,0]},"HB3":{"a":14,"c":"LBH:4 LTA:8 LSE:4 LDE:4","w":[0,0,0,0,0]},"HBB":{"a":14,"c":"BDE:4 LSE:2 LTA:2 BBH:4","w":[0,0,0,0,0]},"HBC":{"a":17,"c":"LBH:4 TRU:2 RTA:4 RSE:2 LDE:2","w":[0,0,0,0,0]},"INC":{"a":10,"c":"BSE:4 BDE:2 BTA:1 BBH:3","w":[40,0,0,0,0]},"POL":{"a":15,"c":"TRU:2 BDE:4 LBH:8 BSE:4","w":[10,25,0,0,0]},"PP2":{"a":25,"c":"BDE:6 TRU:4 BBH:6 BSE:3","w":[25,25,0,0,0]},"PPF":{"a":16,"c":"BSE:2 LBH:4 TRU:2 LDE:2","w":[0,50,0,0,0]},"STA":{"a":8,"c":"BSE:1 BDE:3 BBH:3","w":[0,0,0,0,0]},"STO":{"a":15,"c":"BBH:6 BSE:2 BDE:6","w":[0,0,0,0,0]},"WEL":{"a":19,"c":"BSE:6 BBH:8","w":[70,0,0,0,0]},"WPL":{"a":40,"c":"BDE:2 LSE:3 LBH:6 TRU:6","w":[0,70,0,0,0]}},"plans":[{"id":"b61c0ae7","name":"Katoa","planet":"UV-351a","pname":"Katoa","cogc":"MANUFACTURING","exp":"4 manufacturing","blds":{"WPL":7,"PPF":6,"HB2":8},"io":{"DW":[0,39.5],"EXO":[0,3.95],"KOM":[0,7.9],"KV":[2.175,0],"NL":[19.571,0],"PG":[0,1717.874],"PSL":[8.232,0],"PSS":[24.696,0],"PT":[0,3.95],"RAT":[0,47.4],"REP":[0,1.58],"TCL":[0,10.873]},"cogcEnd":"2026-11-15","env":{"pr":1.05,"tmp":11.9,"grav":0.92},"free":[9287,27853,2503,0,0],"status":"built","desc":"7 WPL (NL, KV) + 6 PPF (PSL, PSS) on PG","note":"Home base. Manufacturing COGC, 4 manufacturing experts in plan."},{"id":"39c0ffeb","name":"Umbra","planet":"UV-351c","pname":"Umbra","cogc":"CHEMISTRY","exp":"3 chemistry, 1 resource extraction","blds":{"CHP":10,"POL":9,"INC":2,"HB1":3,"HB2":8,"HBB":1},"io":{"C":[8.245,12.654],"CL":[24.241,12.654],"COF":[0,1.85],"DW":[0,56.05],"EPO":[632.7,0],"EXO":[0,4.125],"GRN":[0,8.245],"H":[0,12.654],"H2O":[0,24.241],"HAL":[0,72.724],"KOM":[0,8.25],"NA":[48.483,0],"O":[0,12.654],"OVE":[0,1.85],"PT":[0,4.125],"PWO":[0,0.74],"RAT":[0,64.3],"REP":[0,1.65]},"cogcEnd":"2026-11-11","env":{"pr":1.23,"tmp":7.1,"grav":0.86},"free":[3982,15614,5196,0,0],"status":"built","desc":"10 CHP (CL) + 9 POL (EPO) + 2 INC, HAL in","note":"Ships via the Kichijo detour (UV-072a)."},{"id":"0e5aa175","name":"Milliways","planet":"KW-020c","pname":"Milliways","cogc":"FOOD INDUSTRIES","exp":"2 food industries","blds":{"FER":14,"HB2":9,"STO":1},"io":{"ALE":[66.454,0],"AMM":[0,44.303],"DW":[0,208.136],"EXO":[0,4.2],"GRN":[0,22.151],"HER":[0,33.227],"HOP":[0,11.076],"KOM":[199.363,8.4],"PT":[0,4.2],"RAT":[0,50.4],"REP":[0,1.68]},"cogcEnd":"2026-11-16","env":{"pr":0.2523,"tmp":18.9,"grav":1.12},"free":[20938,4426,170,0,0],"status":"built","desc":"14 FER (KOM, ALE) on DW, HER, GRN, HOP, AMM","note":"Built about 26 Oct. HER comes from Nemesis or Benten."},{"id":"fdfee20a","name":"Nemesis","planet":"JS-299a","pname":"Nemesis","cogc":"AGRICULTURE","exp":"none","blds":{"FRM":13,"HB1":7},"io":{"COF":[0,3.25],"DDT":[0,8.016],"DW":[0,26],"GRN":[14.251,0],"H2O":[0,46.316],"HER":[32.065,0],"OVE":[0,3.25],"PWO":[0,1.3],"RAT":[0,26]},"cogcEnd":"2026-11-17","env":{"pr":1.22,"tmp":33.8,"grav":1.03},"free":[7386,5701,207,0,0],"status":"built","desc":"13 FRM (HER, GRN) on H2O and DDT","note":"Founded about 29 Oct. HER feeds Milliways."},{"id":"eefb4e95","name":"Uponor mixed","planet":"XH-329a","pname":"Uponor","cogc":"MANUFACTURING","exp":"none set","blds":{"WPL":5,"BMP":10,"HB2":4,"HB1":10},"io":null,"cogcEnd":"2026-11-15","env":{"pr":1.39,"tmp":9,"grav":0.75},"free":[2412,8172,699,0,0],"status":"approved","desc":"5 WPL (NL) + 10 BMP (PE, OVE, MG)","rec":{"p5":121500,"p0":86000,"src":"PRUNplanner 2 Nov, earlier 7 WPL + 6 BMP layout; the 5 WPL + 10 BMP plan has not been re-run"},"note":"Base 5 per the 2 Nov decision (ISDB loan about 1M). Cut MG orders from x8 to x4 if the MGS ask goes above 400."},{"id":"a4fda3de","name":"Singren CL","planet":"JS-570a","pname":"Singren","cogc":"CHEMISTRY","exp":"1 chemistry","blds":{"CHP":15,"POL":3,"HB1":2,"HB2":7,"HBB":3,"STA":1},"io":null,"cogcEnd":"2026-11-10","env":{"pr":5.62,"tmp":44.9,"grav":0.84},"free":[4404,1296,449,0,0],"status":"candidate","desc":"15 CHP (CL, NA) + 3 POL (EPO), HAL in","extra":{"HSE":32},"rec":{"p5":130600,"p0":94434,"src":"PRUNplanner: 130.6k at 5 experts (27 Oct); 94.4k with the 1 chemistry expert in the plan (3 Nov 21:00). PRUNplanner build cost 2.20M includes 32 HSE for high pressure"},"note":"Base 6 option after Uponor. Needs the big ship. Worker check passed on 27 Oct."},{"id":"239b1c14","name":"Gibson BDE and HMS","planet":"JS-952c","pname":"Gibson","cogc":"CONSTRUCTION","exp":"1 construction","blds":{"PP2":7,"CLF":5,"WEL":2,"HB1":1,"HB2":2,"HBB":3},"io":null,"cogcEnd":"2026-11-10","env":{"pr":0.95,"tmp":33,"grav":0.77},"free":[4783,8247,1293,15,0],"status":"candidate","desc":"7 PP2 (BDE) + 5 CLF (HMS) + 2 WEL (GC)","rec":{"p5":126087,"p0":126087,"src":"PRUNplanner 3 Nov 21:00, plan with 1 construction expert (other expert levels not read); payback about 13 d; PRUNplanner build cost 1.636M, no planet extras"},"note":"Add this plan to a Candidates empire in PRUNplanner to get exact material I/O."}]};
+const COLLECTOR = "javascript:(async()=>{async function opsSnapshot(KEY, USER) { const BOMT = [\"BBH\",\"BDE\",\"BSE\",\"BTA\",\"C\",\"COF\",\"DW\",\"EXO\",\"H\",\"HCP\",\"HSE\",\"KOM\",\"LBH\",\"LDE\",\"LSE\",\"LTA\",\"MAI\",\"MCG\",\"MGS\",\"OVE\",\"PG\",\"PSL\",\"PT\",\"PWO\",\"RAT\",\"RCO\",\"REP\",\"TRU\"]; const fio = async p => { const r = await fetch('https://rest.fnar.net' + p, { headers: { Authorization: KEY } }); if (!r.ok) throw new Error(p + ' HTTP ' + r.status); return r.json(); }; const [user, burn, storage, ships, flights, cxos, sites, prod, cons, blds, whs, prices, recs] = await Promise.all([ fio('/user/' + USER), fio('/fioweb/burn/user/' + USER), fio('/storage/' + USER), fio('/ship/ships/' + USER), fio('/ship/flights/' + USER), fio('/cxos/' + USER), fio('/sites/' + USER), fio('/production/' + USER), fio('/contract/allcontracts'), fetch('https://rest.fnar.net/building/allbuildings').then(r => r.json()), fio('/sites/warehouses/' + USER), fetch('https://refined-prun.github.io/refined-prices/all.json').then(r => r.json()), fetch('https://rest.fnar.net/recipes/allrecipes').then(r => r.json())]); const now = Date.now(), CX = 'CI1', P = {}; prices.filter(x => x.ExchangeCode === CX).forEach(x => P[x.MaterialTicker] = x); const v7 = t => { const x = P[t]; return x ? (x.VWAP7D || x.Ask || x.Bid || 0) : 0; }; const ask = t => { const x = P[t]; return x ? (x.Ask || x.VWAP7D || 0) : 0; }; const r0 = n => Math.round(n), r2 = n => Math.round(n * 100) / 100; const items = s => (s.StorageItems || []).filter(i => i.MaterialTicker); const imap = s => Object.fromEntries(items(s).map(i => [i.MaterialTicker, i.MaterialAmount])); const val = s => items(s).reduce((a, i) => a + i.MaterialAmount * v7(i.MaterialTicker), 0); const siteName = {}; sites.forEach(s => siteName[s.SiteId] = s.PlanetName); const bcost = {}; blds.forEach(b => bcost[b.Ticker] = (b.BuildingCosts || []).reduce((a, c) => a + c.Amount * ask(c.CommodityTicker), 0)); const consumed = new Set(), produced = new Set(), pxT = new Set(); const netBy = {}; burn.forEach(b => { const net = {}; (b.WorkforceConsumption || []).concat(b.OrderConsumption || []).forEach(c => net[c.MaterialTicker] = (net[c.MaterialTicker] || 0) - c.DailyAmount); (b.OrderProduction || []).forEach(c => net[c.MaterialTicker] = (net[c.MaterialTicker] || 0) + c.DailyAmount); netBy[b.PlanetName] = net; Object.entries(net).forEach(([t, v]) => { if (v < -0.001) consumed.add(t); else if (v > 0.001) produced.add(t); pxT.add(t); }); }); const roleOf = (t, bn) => { if (bn && netBy[bn] && netBy[bn][t] != null && Math.abs(netBy[bn][t]) > 0.001) return netBy[bn][t] < 0 ? 'S' : 'P'; if (bn) return 'O'; const c = consumed.has(t), p = produced.has(t); return c && p ? 'B' : c ? 'S' : p ? 'P' : 'O'; }; const split = (s, bn, toBenten) => { const o = { S: 0, P: 0, O: 0 }; items(s).forEach(i => { let r = roleOf(i.MaterialTicker, bn); if (r === 'B') r = toBenten ? 'P' : 'S'; o[r] += i.MaterialAmount * v7(i.MaterialTicker); pxT.add(i.MaterialTicker); }); return { S: r0(o.S), P: r0(o.P), O: r0(o.O) }; }; const tot = { stock: 0, wh: 0, ships: 0, fuel: 0, build: 0 }; const sp = { S: 0, P: 0, O: 0 }; const addSp = x => { sp.S += x.S; sp.P += x.P; sp.O += x.O; }; const baseStore = {}; storage.forEach(s => { const v = val(s); if (s.Type === 'STORE') { const bn = siteName[s.AddressableId] || s.Name; tot.stock += v; baseStore[bn] = s; } else if (s.Type === 'WAREHOUSE_STORE') tot.wh += v; else if (s.Type === 'SHIP_STORE') tot.ships += v; else tot.fuel += v; }); const fl = Object.fromEntries(flights.map(f => [f.FlightId, f])); const bases = burn.map(b => { const st = sites.find(s => s.PlanetName === b.PlanetName) || { Buildings: [] }; const store = baseStore[b.PlanetName]; const inv = {}; (b.Inventory || []).forEach(i => { if (i.MaterialTicker) inv[i.MaterialTicker] = i.MaterialAmount; }); const net = netBy[b.PlanetName] || {}; const wf = {}; (b.WorkforceConsumption || []).forEach(c => wf[c.MaterialTicker] = r2((wf[c.MaterialTicker] || 0) + c.DailyAmount)); const sv = store ? split(store, b.PlanetName) : { S: 0, P: 0, O: 0 }; addSp(sv); let bv = 0; st.Buildings.forEach(x => bv += (bcost[x.BuildingTicker] || 0) * x.Condition); tot.build += bv; const cond = st.Buildings.map(x => x.Condition); const rep = st.Buildings.map(x => x.BuildingLastRepair || x.BuildingCreated); const lines = prod.filter(l => l.PlanetName === b.PlanetName).map(l => ({ ty: l.Type, cap: l.Capacity, eff: r2(l.Efficiency), orders: l.Orders.map(o => ({ s: o.StartedEpochMs || 0, e: o.CompletionEpochMs || 0, d: o.DurationMs || 0, r: o.Recurring ? 1 : 0, h: o.IsHalted ? 1 : 0, i: Object.fromEntries((o.Inputs || []).map(x => [x.MaterialTicker, x.MaterialAmount])), o: Object.fromEntries((o.Outputs || []).map(x => [x.MaterialTicker, x.MaterialAmount])) })) })); Object.keys(inv).forEach(t => pxT.add(t)); return { p: b.PlanetName, nid: b.PlanetNaturalId, founded: st.PlanetFoundedEpochMs ? new Date(st.PlanetFoundedEpochMs).toISOString() : null, upd: b.LastUpdate, inv, wf, net: Object.fromEntries(Object.entries(net).map(([k, v]) => [k, r2(v)])), stockVal: r0(val(store || { StorageItems: [] })), split: sv, bldVal: r0(bv), nB: st.Buildings.length, avgCond: Math.round(cond.reduce((a, c) => a + c, 0) / Math.max(1, cond.length) * 1000) / 1000, minCond: Math.round(Math.min(...cond, 1) * 1000) / 1000, oldestRepairD: rep.length ? r0((now - Math.min(...rep)) / 864e5) : 0, lines }; }); const whName = {}; whs.forEach(w => whName[w.WarehouseId] = w.LocationName); const warehouses = storage.filter(s => s.Type === 'WAREHOUSE_STORE').map(s => { const sv = split(s, null, false); addSp(sv); return { name: whName[s.AddressableId] || s.Name, items: imap(s), split: sv }; }); const shipRows = ships.map(s => { const f = fl[s.FlightId], c = storage.find(x => x.StorageId === s.StoreId); const toBen = f ? /benten/i.test(f.Destination || '') : false; const sv = c ? split(c, null, toBen) : { S: 0, P: 0, O: 0 }; addSp(sv); return { r: s.Registration, cond: r2(s.Condition), fid: f ? f.FlightId : null, dep: f ? f.DepartureTimeEpochMs : null, arr: f ? f.ArrivalTimeEpochMs : null, fuel: f ? r0((f.Segments || []).reduce((a, g) => a + (g.StlFuelConsumption || 0) + (g.FtlFuelConsumption || 0), 0)) : 0, dmg: f ? Math.round((f.Segments || []).reduce((a, g) => a + (g.Damage || 0), 0) * 1e4) / 1e4 : 0, to: f ? f.Destination : null, from: f ? f.Origin : null, etaH: f ? r2((f.ArrivalTimeEpochMs - now) / 3.6e6) : 0, cargo: c ? imap(c) : {}, cargoVal: c ? r0(val(c)) : 0, split: sv, wl: c ? r0(c.WeightLoad) : 0, vl: c ? r0(c.VolumeLoad) : 0, wc: c ? r0(c.WeightCapacity) : 0, vc: c ? r0(c.VolumeCapacity) : 0 }; }); const orders = cxos.filter(o => o.Status !== 'FILLED').map(o => ({ s: o.OrderType[0], tk: o.MaterialTicker, n: o.Amount, lim: o.Limit, st: o.Status, ageH: r2((now - o.CreatedEpochMs) / 3.6e6) })); const trades = cxos.flatMap(o => (o.Trades || []).map(t => ({ id: t.CXOSTradeId, ts: t.TradeTimeEpochMs, s: o.OrderType[0], tk: o.MaterialTicker, n: t.Amount, p: r2(t.Price), v7: r2(v7(o.MaterialTicker)) }))); const amt = x => x && x.Amount && x.Amount.Amount ? x.Amount.Amount : (x && x.Amount) || 0; const loans = cons.filter(c => c.Conditions.some(x => x.Type === 'LOAN_INSTALLMENT' && x.Party === c.Party)).map(c => { const ins = c.Conditions.filter(x => x.Type === 'LOAN_INSTALLMENT'), pay = c.Conditions.find(x => x.Type === 'LOAN_PAYOUT'); const pend = ins.filter(x => x.Status !== 'FULFILLED'); const ia = x => x.TotalAmount && x.TotalAmount.Amount ? x.TotalAmount.Amount : (x.TotalAmount || x.RepaymentAmount || 0); const nextDue = pend.map(x => x.DeadlineEpochMs).filter(Boolean).sort()[0] || null; return { id: c.ContractLocalId, partner: c.PartnerName, st: c.Status, since: c.DateEpochMs, principal: pay ? amt(pay) : null, n: ins.length, paid: ins.length - pend.length, inst: ins[0] ? ia(ins[0]) : null, pendingTotal: r0(pend.reduce((a, x) => a + ia(x), 0)), nextDue }; }).filter(l => l.pendingTotal > 0); const payments = cons.filter(c => ['CLOSED', 'PARTIALLY_FULFILLED'].includes(c.Status)).flatMap(c => c.Conditions.filter(x => x.Type === 'PAYMENT' && x.Status !== 'FULFILLED' && x.Party === c.Party) .map(x => ({ id: c.ContractLocalId, partner: c.PartnerName, name: c.Name, amt: r0(amt(x)), due: x.DeadlineEpochMs || null }))); const used = new Set(); sites.forEach(s => s.Buildings.forEach(b => used.add(b.BuildingTicker))); const recipes = recs.filter(r => used.has(r.BuildingTicker)).map(r => ({ b: r.BuildingTicker, n: r.RecipeName, h: r2(r.TimeMs / 3.6e6), i: Object.fromEntries((r.Inputs || []).map(x => [x.Ticker, x.Amount])), o: Object.fromEntries((r.Outputs || []).map(x => [x.Ticker, x.Amount])) })); recipes.forEach(r => Object.keys(r.i).concat(Object.keys(r.o)).forEach(t => pxT.add(t))); BOMT.forEach(t => pxT.add(t)); const book = {}; await Promise.all(BOMT.map(async t => { try { const x = await fetch('https://rest.fnar.net/exchange/' + t + '.CI1').then(r => r.json()); const m = {}; (x.SellingOrders || []).forEach(o => { if (o.ItemCost) m[o.ItemCost] = (m[o.ItemCost] || 0) + (o.ItemCount == null ? 1e9 : o.ItemCount); }); book[t] = Object.entries(m).map(([p, n]) => [+p, n]).sort((a, b) => a[0] - b[0]).slice(0, 8); } catch (e) {} })); const px = {}; pxT.forEach(t => { const x = P[t]; if (x) px[t] = [x.Ask, x.Bid, x.VWAP7D, x.AverageTraded7D == null ? null : r2(x.AverageTraded7D)]; }); const cis = user.Balances.find(b => b.Currency === 'CIS'); const T = x => x ? new Date(x).getTime() : null; const fresh = { ships: Object.fromEntries(ships.map(s => [s.Registration, { f: T((flights.find(x => x.FlightId === s.FlightId) || {}).Timestamp), c: T((storage.find(x => x.StorageId === s.StoreId) || {}).Timestamp) }])), bases: Object.fromEntries(Object.entries(baseStore).map(([k, v]) => [k, T(v.Timestamp)])), wh: T((storage.find(s => s.Type === 'WAREHOUSE_STORE') || {}).Timestamp) }; return { v: 2, fresh, t: now, cashFio: cis ? r0(cis.Amount) : null, val: Object.fromEntries(Object.entries(tot).map(([k, v]) => [k, r0(v)])), split: { S: r0(sp.S), P: r0(sp.P), O: r0(sp.O) }, bases, warehouses, ships: shipRows, orders, trades, loans, payments, recipes, px, book }; }const U='II_SAM';let K=localStorage.getItem('opsKey');if(!K){K=prompt('FIO read-only API key');if(!K)return;localStorage.setItem('opsKey',K);}try{const s=await opsSnapshot(K,U);const txt=JSON.stringify(s);try{await navigator.clipboard.writeText(txt);alert('Snapshot copied ('+txt.length+' characters). Paste it in Vivaldi Ops, Log tab.');}catch(e){prompt('Copy this snapshot',txt);}}catch(e){alert('Snapshot failed: '+e.message);}})()";
+const MATS = {"AAR":[0.78,0.5],"ABH":[0.6,0.9],"ACS":[0.3,0.2],"ADE":[0.4,1.5],"ADR":[0.1,0.1],"ADS":[0.7,2],"AEF":[2,5],"AEN":[14,7],"AFP":[1,0.25],"AFR":[0.4,0.1],"AGS":[30,5],"AHP":[10,10],"AIR":[1.7,3],"AL":[2.7,1],"ALE":[0.1,0.1],"ALG":[0.7,1],"ALO":[1.35,1],"ALR":[3.6,1],"AMM":[0.86,1],"ANZ":[6,3],"APT":[0.03,0.3],"AR":[1.784,1],"ARP":[0.04,0.2],"ASE":[0.5,0.6],"AST":[4.98,1],"ATA":[0.3,0.4],"ATP":[2.9,1],"AU":[19.32,1],"AUO":[3.86,1],"AWF":[0.8,1.2],"AWH":[0.12,1],"BAC":[0.15,0.15],"BAI":[0.001,0.01],"BBH":[0.5,0.8],"BCO":[0.005,0.002],"BDE":[0.1,1.5],"BE":[1.84,1],"BEA":[0.8,1],"BER":[1.92,1],"BFP":[0.8,0.2],"BFR":[0.3,0.1],"BGC":[0.01,0.002],"BGO":[19.32,1],"BGS":[20,3],"BHP":[9,10],"BID":[0.05,0.05],"BL":[1.12,1],"BLE":[0.5,0.5],"BMF":[0.8,1.2],"BND":[0.001,0.005],"BOR":[1.8,1],"BOS":[1.5,1],"BPT":[0.02,0.3],"BR1":[180,300],"BR2":[280,400],"BRM":[2.5,1],"BRO":[8.73,1],"BRP":[0.03,0.2],"BRS":[150,200],"BSC":[0.1,0.1],"BSE":[0.3,0.5],"BSU":[50,50],"BTA":[0.3,0.4],"BTS":[1.05,1],"BWH":[0.1,1],"BWS":[0.05,0.1],"C":[2.25,1],"CA":[1.54,1],"CAF":[0.86,1],"CAP":[0.001,0.001],"CBL":[5.4,2.4],"CBM":[3.6,1.6],"CBS":[1.8,0.8],"CBU":[54,47],"CC":[0.5,1],"CCD":[0.3,0.05],"CD":[0.004,0.002],"CF":[2.82,1],"CHA":[1.2,0.7],"CL":[3.2,1],"CLI":[2.42,1],"CMK":[4.56,33.2],"COF":[0.1,0.1],"COM":[0.5,1.5],"COT":[0.77,1],"CPU":[20,20],"CQL":[75,150],"CQM":[50,100],"CQS":[25,50],"CQT":[12.5,25],"CRU":[2.2,2],"CST":[1.14,1],"CTF":[4.32,1],"CU":[8.92,1],"CUO":[4.01,1],"DA":[0.001,0.01],"DCH":[0.2,0.03],"DCL":[0.08,0.8],"DCM":[0.04,0.4],"DCS":[0.01,0.1],"DD":[0.001,0.01],"DDT":[0.11,0.1],"DEC":[0.5,2],"DIS":[0.02,0.02],"DOU":[5,4],"DRF":[0.1,0.02],"DV":[0.001,0.01],"DW":[0.1,0.1],"EBU":[51,46],"EDC":[0.001,0.01],"EES":[9.2,1],"ENG":[8,4],"EPO":[0.04,0.02],"ES":[0.88,0.1],"ETC":[4.1,1],"EXO":[0.1,0.05],"F":[1.696,1],"FAL":[3.22,1],"FAN":[0.1,0.1],"FC":[0.5,0.25],"FE":[7.874,1],"FEO":[5.9,1],"FET":[6.85,1],"FF":[0.05,0.01],"FFC":[50,16],"FIM":[0.55,0.5],"FIR":[7,4.9],"FLO":[1,2],"FLP":[0.3,2],"FLX":[0.25,0.1],"FOD":[1.2,1],"FSE":[6,3],"FUN":[5,4],"GAL":[2.51,1],"GC":[0.05,0.1],"GCH":[1,0.6],"GEN":[5,3],"GIN":[0.1,0.1],"GL":[0.016,0.01],"GNZ":[1.5,1],"GRA":[1.1,1],"GRN":[0.9,1],"GV":[0.25,0.15],"GWS":[5000,5000],"H":[0.07,1],"H2O":[0.2,0.2],"HAB":[10,8],"HAL":[2.17,1],"HAM":[1200,1200],"HCB":[500,500],"HCC":[0.01,0.002],"HCP":[0.8,1],"HD":[0.05,2],"HE":[0.145,1],"HE3":[0.145,1],"HER":[0.4,1],"HEX":[1.1,1],"HHP":[10,10],"HMS":[0.05,0.05],"HNZ":[6,12],"HOG":[0.01,0.01],"HOP":[0.35,1],"HPC":[0.003,0.003],"HPR":[16,15],"HSE":[3.1,0.7],"HSS":[0.05,0.05],"HTE":[16,10],"HYR":[25,25],"I":[4.93,1],"IDC":[0.001,0.01],"IMM":[0.001,0.01],"IND":[0.21,0.2],"INS":[0.06,0.1],"JUI":[1.2,1],"KOM":[0.1,0.1],"KR":[2.8,1],"KRE":[8.25,1],"KV":[1.65,1],"LBH":[0.2,0.6],"LC":[0.05,0.05],"LCB":[200,200],"LCR":[0.15,0.1],"LD":[0.001,0.01],"LDE":[0.1,1.2],"LDI":[0.001,0.001],"LES":[8.84,1],"LFE":[0.4,1.6],"LFL":[60,10],"LFP":[0.5,0.1],"LHP":[4,10],"LI":[0.55,1],"LIO":[2.75,1],"LIS":[5.6,7],"LIT":[1,2],"LOG":[0.5,1.5],"LSE":[0.3,1.2],"LSL":[125,100],"LST":[2.73,1],"LTA":[0.3,0.5],"LU":[8,6],"MAG":[5.15,1],"MAI":[1.3,1],"MB":[0.075,0.075],"MCB":[100,100],"MCG":[0.24,0.1],"MEA":[0.6,0.5],"MED":[0.3,0.1],"MFE":[0.2,0.8],"MFK":[0.1,0.05],"MFL":[24,4],"MG":[0.27,0.16],"MGC":[0.6,0.9],"MGS":[1.73,1],"MHL":[0.1,0.05],"MHP":[0.001,0.001],"MLI":[0.001,0.01],"MPC":[0.001,0.001],"MSL":[50,50],"MTC":[0.032,0.01],"MTP":[0.7,1],"MUS":[0.8,1],"MWF":[0.008,0.008],"N":[0.807,1],"NA":[0.97,1],"NAB":[0.1,0.05],"NCS":[0.028,0.01],"NE":[0.9,1],"NF":[0.001,0.01],"NFI":[0.032,0.01],"NG":[0.022,0.01],"NL":[1.13,1],"NN":[0.001,0.01],"NOZ":[3,1.5],"NR":[0.05,0.05],"NS":[0.6,0.5],"NST":[0.05,0.05],"NUT":[0.9,1],"NV1":[4.2,2],"NV2":[6.7,3],"O":[1.141,1],"OFF":[0.02,0.2],"OLF":[0.01,0.001],"OS":[0.001,0.01],"OVE":[0.02,0.025],"PBU":[13,8],"PCB":[0.05,0.05],"PDA":[0.002,0.002],"PE":[0.01,0.01],"PFE":[0.9,1],"PFG":[80,65],"PG":[0.002,0.001],"PIB":[0.3,1],"PK":[0.001,0.001],"POW":[0.05,0.1],"PPA":[2,1],"PSH":[4.2,0.8],"PSL":[0.08,0.8],"PSM":[0.04,0.4],"PSS":[0.01,0.1],"PT":[0.25,0.2],"PWO":[0.05,0.05],"QCR":[14,10],"RAD":[0.003,0.005],"RAG":[5,3.4],"RAM":[0.001,0.001],"RAT":[0.21,0.1],"RBH":[2.4,0.9],"RCO":[0.95,1],"RCS":[0.67,0.5],"RCT":[7,4],"RDE":[1.4,1.5],"RDL":[150,30],"RDS":[50,10],"RE":[3.2,1],"REA":[0.05,0.05],"RED":[0.3,0.05],"REO":[12.8,1],"REP":[0.006,0.002],"RG":[0.032,0.01],"RGO":[19.32,1],"RHP":[10,10],"ROM":[0.001,0.001],"RSE":[1.9,0.7],"RSH":[3.7,0.8],"RSI":[1.1,1],"RTA":[1.5,0.5],"S":[0.52,0.25],"SA":[0.001,0.01],"SAL":[0.001,0.01],"SAR":[1.7,2],"SBU":[20,13],"SC":[0.04,0.01],"SCB":[50,50],"SCN":[0.001,0.001],"SCR":[2.05,1],"SDM":[500,500],"SDR":[0.3,0.05],"SEA":[0.15,0.07],"SEN":[0.001,0.001],"SEQ":[0.001,0.01],"SF":[0.06,0.06],"SFE":[0.1,0.4],"SFK":[0.04,0.02],"SFL":[9,1.5],"SI":[2.329,1],"SIL":[1.21,1],"SIO":[1.79,1],"SNM":[0.001,0.01],"SOI":[0.9,1],"SOL":[0.015,0.01],"SP":[0.15,0.1],"SPT":[1.8,5],"SRD":[0.3,0.05],"SRP":[0.1,0.2],"SSC":[1,1],"SSL":[20,20],"SST":[1500,500],"STL":[7.85,1],"STR":[0.01,1],"STS":[0.1,0.1],"SU":[6,5],"SUD":[0.3,0.05],"SUN":[0.05,0.05],"SWF":[0.003,0.003],"TA":[16.65,1],"TAC":[0.15,1],"TAI":[7.94,1],"TBU":[24,16],"TC":[11.8,1],"TCB":[20,20],"TCL":[0.09,0.1],"TCO":[9.8,1],"TCS":[3.4,1.2],"TCU":[5,4],"THF":[0.6,0.35],"THP":[2.2,1],"TI":[4.5,1],"TIO":[1.58,1],"TK":[1.89,1],"TOR":[700,200],"TPU":[0.002,0.002],"TRA":[0.005,0.002],"TRN":[0.001,0.001],"TRS":[50,50],"TRU":[0.1,1.5],"TS":[2.4,1],"TSH":[2.4,1.5],"TUB":[0.002,0.002],"UTS":[0.05,0.05],"VCB":[200,200],"VEG":[1.1,1],"VF":[0.1,0.1],"VFT":[1000,1000],"VG":[0.21,0.1],"VIT":[0.9,1],"VOE":[40,35],"VOR":[35,30],"VSC":[35,35],"W":[7.519,1],"WAI":[0.001,0.01],"WAL":[6.25,1],"WCB":[200,200],"WIN":[0.1,0.1],"WM":[0.001,0.01],"WOR":[5,5],"WR":[6.4,5],"WRH":[6.92,1],"WS":[0.05,0.5],"ZIR":[4.85,1],"ZR":[6.53,1]};
+
+const STATUS = {
+  built: { label: 'Built', color: 'var(--s-built)' }, approved: { label: 'Approved', color: 'var(--s-approved)' },
+  candidate: { label: 'Candidate', color: 'var(--s-candidate)' }, idea: { label: 'Idea', color: 'var(--s-idea)' }, dropped: { label: 'Dropped', color: 'var(--s-dropped)' }
+};
+const WT = ['P','S','T','E','Sc'];
+const XIT = [ { t: Date.UTC(2026,9,11,12), v: 2160000 }, { t: Date.UTC(2026,9,18,12), v: 3260000 }, { t: Date.UTC(2026,9,19,17), v: 3560000 } ];
+const TZ = 'Europe/Amsterdam', DAY = 864e5, HR = 36e5;
+const LT = { plasticsPrinterFacility: 'PPF', weavingPlant: 'WPL', farm: 'FRM', fermentationFacility: 'FER', chemPlant: 'CHP', polymerPlant: 'POL', incinerator: 'INC' };
+const DEF_FLIGHT = { Katoa: 6, Umbra: 12, Milliways: 4.5, Nemesis: 8.5 };
+const P = OPS.prices;
+const ask_ = t => P[t] && P[t][0], ask = t => P[t] && P[t][0], bid = t => P[t] && P[t][1], v7 = t => (P[t] && (P[t][2] || P[t][0])) || 0, t7 = t => P[t] && P[t][4];
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const money = n => { if (n == null || isNaN(n)) return '–'; const a = Math.abs(n); return (n < 0 ? '−' : '') + (a >= 1e6 ? (a/1e6).toFixed(2) + 'M' : Math.round(a/1000) + 'k'); };
+const num = n => Math.round(n).toLocaleString('en-US');
+const ageText = ms => { const h = ms / HR; return h < 1 ? Math.max(1, Math.round(h * 60)) + ' min' : h < 48 ? h.toFixed(h < 10 ? 1 : 0) + ' h' : Math.round(h / 24) + ' d'; };
+const dayText = t => new Date(t).toLocaleDateString('en-GB', { timeZone: TZ, day: 'numeric', month: 'short' });
+const fmtDT = ms => (ms == null || ms === Infinity) ? 'after 14 days' : new Date(ms).toLocaleString('en-GB', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+const rel = ms => { if (ms === Infinity) return ''; const h = (ms - Date.now()) / HR; return h <= 0 ? 'now' : h < 48 ? 'in ' + h.toFixed(h < 10 ? 1 : 0) + ' h' : 'in ' + (h / 24).toFixed(1) + ' d'; };
+const daysTo = d => Math.ceil((new Date(d + 'T12:00:00Z') - Date.now()) / DAY);
+const shortDate = s => { const d = new Date(s + 'T12:00:00Z'); return d.getUTCDate() + ' ' + d.toLocaleString('en-GB', { month: 'short', timeZone: 'UTC' }); };
+const pv7 = (px, t) => { const x = px && px[t]; return x ? (x[2] || x[0] || x[1] || 0) : 0; };
+const pask = (px, t) => { const x = px && px[t]; return x ? (x[0] || x[2] || x[1] || 0) : 0; };
+const pbid = (px, t) => { const x = px && px[t]; return x ? (x[1] || x[2] || x[0] || 0) : 0; };
+const step3 = p => Math.pow(10, Math.floor(Math.log10(Math.abs(p) || 1)) - 2);
+const up3 = p => { const s = step3(p); return Math.round(Math.ceil(p / s - 1e-9) * s * 1e6) / 1e6; };
+
+// ---------- plan maths (Bases library)
+function buildCost(pl) {
+  let tot = 0, area = 25; const all = Object.assign({}, pl.blds, { CM: 1 });
+  for (const [b, n] of Object.entries(all)) { const bd = OPS.bld[b]; let c = 0; for (const m of bd.c.split(' ')) { const [t, q] = m.split(':'); c += q * ask(t); } tot += c * n; if (b !== 'CM') area += bd.a * n; }
+  tot += 4 * area * (ask('MCG') || 0);
+  for (const [t, q] of Object.entries(pl.extra || {})) tot += q * (ask(t) || 0);
+  return { cost: tot, area };
+}
+function needs(pl) { const n = [0,0,0,0,0]; for (const [b, c] of Object.entries(pl.blds)) OPS.bld[b].w.forEach((w, i) => n[i] += w * c); return n; }
+function calc(pl) {
+  const bc = buildCost(pl); const r = { cost: bc.cost, area: bc.area, repair: bc.cost / 180, needs: needs(pl) };
+  if (pl.io) {
+    let p7 = 0; const out = [];
+    for (const [t, [pr, co]] of Object.entries(pl.io)) { const dl = pr - co; p7 += dl * v7(t); if (dl > 0.05) out.push({ t, perDay: dl, val: dl * v7(t), share: 100 * dl / t7(t) }); }
+    out.sort((a, b) => b.val - a.val); r.p7 = p7; r.out = out; r.net = p7 - r.repair; r.headline = p7; r.payback = r.cost / r.net;
+  } else if (pl.rec) { r.headline = pl.rec.p5; r.payback = pl.rec.p0 ? r.cost / pl.rec.p0 : null; } else { r.headline = 0; r.payback = null; }
+  return r;
+}
+const CALC = {}; OPS.plans.forEach(p => CALC[p.id] = calc(p));
+const planExpected = () => OPS.plans.filter(p => p.io).reduce((a, p) => a + CALC[p.id].net, 0);
+
+// ---------- state
+const st = { snaps: [], alerts: [], cash: [], adj: [], finch: [], saved: {}, settings: {}, tab: 'today', filter: 'all', sortBy: 'profit', openB: {}, sup: { leave: null, countShip: false, noBuy: {}, ship: null } };
+let db = null; const chain = {};
+const setSync = t => { document.getElementById('sync').textContent = t; };
+function cur(id) { const p = OPS.plans.find(x => x.id === id); return Object.assign({ status: p.status, note: p.note || '' }, st.saved[id] || {}); }
+function enqueue(path, data, okMsg) {
+  if (!db) { setSync('Not saved. Storage is off in this view.'); return Promise.resolve(false); }
+  chain[path] = (chain[path] || Promise.resolve()).then(async () => { try { await db.doc(path).set(data); setSync(okMsg); return true; } catch (e) { setSync('Could not save (' + ((e && e.code) || 'error') + ').'); return false; } });
+  return chain[path];
+}
+const S = () => st.settings;
+const claimH = p => (p && S().claim && S().claim[p] != null) ? S().claim[p] : (S().claimH == null ? 6.25 : S().claimH);
+const flightH = p => { if (S().flight && S().flight[p] != null) return S().flight[p]; const o = observedFlight(p); if (o != null) return Math.round(o * 100) / 100; return DEF_FLIGHT[p] != null ? DEF_FLIGHT[p] : 6; };
+const flightSrc = p => (S().flight && S().flight[p] != null) ? 'set' : (observedFlight(p) != null ? 'observed' : 'default');
+const targetD = p => (S().target && S().target[p] != null) ? S().target[p] : (S().defTarget || 2.5);
+const incl = p => !(S().exclude && S().exclude[p]);
+function saveSettings(patch) { st.settings = Object.assign({}, st.settings, patch); return enqueue('settings/main', st.settings, 'Settings saved.'); }
+const latest = () => st.snaps.find(s => s.v >= 2) || st.snaps[0] || null;
+const latestAny = () => st.snaps[0] || null;
+const debt = s => (s.loans || []).reduce((a, l) => a + l.pendingTotal, 0);
+function wipValue(s) { let v = 0; (s.bases || []).forEach(b => (b.lines || []).forEach(l => (l.orders || []).forEach(o => { if (!o.s || o.h || o.e <= s.t) return; const t = Math.min(1, Math.max(0, (s.t - o.s) / (o.d || 1))); const inp = Object.entries(o.i || {}).reduce((a, [k, n]) => a + n * pv7(s.px, k), 0), out = Object.entries(o.o || {}).reduce((a, [k, n]) => a + n * pv7(s.px, k), 0); v += inp * (1 - t) + out * t; }))); return v; }
+const cxlValue = s => (s.orders || []).filter(o => o.s === 'S').reduce((a, o) => a + o.n * pv7(s.px, o.tk), 0);
+const assets = s => { const v = s.val; return v.stock + v.wh + v.ships + v.fuel + v.build + (s.bases && s.bases[0] && s.bases[0].lines ? wipValue(s) : 0) + cxlValue(s); };
+const recipesOf = s => (s && s.recipes) || (st.snaps.find(x => x.recipes) || {}).recipes || [];
+function adjAt(t) { return st.adj.filter(a => a.t <= t).reduce((x, a) => x + a.amt, 0); }
+function cashAt(s) {
+  const e = st.cash.find(x => x.t <= s.t + 3600e3); if (!e) return null;
+  const flow = allTrades().filter(t => t.ts > e.t && t.ts <= s.t).reduce((a, t) => a + (t.s === 'S' ? 1 : -1) * t.n * t.p, 0);
+  return { v: e.cis + flow, est: s.t - e.t > 36 * HR || Math.abs(flow) > 0, entry: e };
+}
+function worth(s) { const c = cashAt(s), adj = adjAt(s.t), base = assets(s) - debt(s) + adj; return { cash: c, ex: base, full: c == null ? null : base + c.v }; }
+function series() {
+  const pts = (st.finch.length ? st.finch.map(r => ({ t: r.t, v: r.eq, kind: 'xit' })) : XIT.map(p => ({ t: p.t, v: p.v, kind: 'xit' })));
+  st.snaps.slice().reverse().forEach(s => { const w = worth(s); if (w.full != null) pts.push({ t: s.t, v: w.full, kind: 'snap' }); });
+  return pts.sort((a, b) => a.t - b.t);
+}
+function allTrades() {
+  const seen = new Map(); st.snaps.slice().reverse().forEach(s => (s.trades || []).forEach(t => { if (!seen.has(t.id)) seen.set(t.id, t); }));
+  return [...seen.values()];
+}
+
+// ---------- ships: status, data age, cargo split
+function roleSets(s) { if (s._rs) return s._rs; const C = new Set(), Pd = new Set(); (s.bases || []).forEach(b => Object.entries(b.net || {}).forEach(([t, v]) => { if (v < -0.001) C.add(t); else if (v > 0.001) Pd.add(t); })); return s._rs = { C, Pd }; }
+function cargoSplit(s, sh) {
+  const { C, Pd } = roleSets(s), toBen = /benten/i.test(sh.to || ''), out = { S: [], P: [], O: [] };
+  Object.entries(sh.cargo || {}).forEach(([t, n]) => { const c = C.has(t), p = Pd.has(t); const r = c && p ? (toBen ? 'P' : 'S') : c ? 'S' : p ? 'P' : 'O'; out[r].push({ t, n, val: n * pv7(s.px, t) }); });
+  Object.values(out).forEach(a => a.sort((x, y) => y.val - x.val)); return out;
+}
+const sumVal = a => a.reduce((x, i) => x + i.val, 0);
+const itemsText = a => a.length ? a.map(i => esc(i.t) + ' ' + num(i.n)).join(', ') : 'none';
+function shipStatus(s, sh) {
+  const now = Date.now(), arr = s.t + sh.etaH * HR, fr = (s.fresh && s.fresh.ships && s.fresh.ships[sh.r]) || {}, fAge = fr.f ? now - fr.f : null;
+  const dest = String(sh.to || '').split(' (')[0], stale = fAge != null && fAge > 2 * HR;
+  return { fAge, cAge: fr.c ? now - fr.c : null, stale, text: arr > now ? 'Heading to ' + dest + ', arrives ' + fmtDT(arr) + ' (' + rel(arr) + ')' : 'Last known: reached ' + dest + ' at ' + fmtDT(arr) };
+}
+function shipsBlock(s) {
+  const cards = (s.ships || []).map(sh => { const st = shipStatus(s, sh), sp = cargoSplit(s, sh);
+    return '<div class="shipcard"><div class="row" style="justify-content:space-between"><b>' + esc(sh.r) + '</b><span class="sub">condition ' + Math.round(sh.cond * 100) + '%</span></div><div>' + st.text + '</div>' + (st.stale ? '<div class="warnc sub">FIO flight data is ' + ageText(st.fAge) + ' old; the ship may have moved on</div>' : '') +
+      '<div class="kv"><div><span>Load</span><b>' + num(sh.wl) + ' t, ' + num(sh.vl) + ' m³</b></div><div><span>Supplies</span><b>' + money(sumVal(sp.S)) + '</b></div><div><span>Products</span><b>' + money(sumVal(sp.P)) + '</b></div><div><span>Other</span><b>' + money(sumVal(sp.O)) + '</b></div></div></div>'; }).join('');
+  const detail = (s.ships || []).map(sh => { const sp = cargoSplit(s, sh), st = shipStatus(s, sh);
+    return '<details data-open="cargo' + esc(sh.r) + '"' + (st.openD ? ' open' : '') + '><summary>' + esc(sh.r) + ' cargo' + (st.cAge != null ? ' <span class="muted">· data ' + ageText(st.cAge) + ' old</span>' : '') + '</summary>' +
+      '<h3 class="sm">Supplies · ' + money(sumVal(sp.S)) + '</h3><p class="sub">' + itemsText(sp.S) + '</p><h3 class="sm">Products · ' + money(sumVal(sp.P)) + '</h3><p class="sub">' + itemsText(sp.P) + '</p>' + (sp.O.length ? '<h3 class="sm">Other · ' + money(sumVal(sp.O)) + '</h3><p class="sub">' + itemsText(sp.O) + '</p>' : '') + '</details>'; }).join('');
+  return '<div class="ships">' + cards + '</div>' + detail +
+    '<p class="sub">Supplies are materials a base uses, products are what bases make. Materials that are both (KOM) count as products on a ship heading to Benten and as supplies otherwise.</p>';
+}
+function freshRows(s) {
+  const f = s.fresh || {}, rows = [];
+  const row = (n, t, note) => rows.push({ n, t, note });
+  (s.bases || []).forEach(b => row('Base ' + b.p, new Date(b.upd).getTime(), 'updates when you open the base'));
+  const fl = Object.values(f.ships || {}).map(x => x.f).filter(Boolean), cg = Object.values(f.ships || {}).map(x => x.c).filter(Boolean);
+  row('Ships and flights', fl.length ? Math.max(...fl) : null, 'updates when you open the ship or its flight'); row('Ship cargo', cg.length ? Math.max(...cg) : null, 'updates when you open the ship inventory');
+  row('Benten warehouse', f.wh || null, 'updates when you open the warehouse');
+  return rows;
+}
+function freshPanel(s) {
+  const now = Date.now(), rows = freshRows(s), stale = rows.filter(r => r.t != null && now - r.t > 2 * HR);
+  const body = '<div class="tablewrap"><table><thead><tr><th>Source</th><th>Age</th></tr></thead><tbody>' + rows.map(r => '<tr><td>' + esc(r.n) + '<div class="sub">' + r.note + '</div></td><td class="n ' + (r.t != null && now - r.t > 2 * HR ? 'warnc' : '') + '">' + (r.t == null ? 'unknown' : ageText(now - r.t)) + '</td></tr>').join('') + '</tbody></table></div><p class="sub">Prices, orders, loans and contracts are read live at the snapshot (' + ageText(now - s.t) + ' ago). FIO only learns about a base, ship or warehouse when it is opened in the game, so open them before you log a snapshot.</p>';
+  return '<details class="panel" data-open="fresh"' + (st.openB.fresh ? ' open' : '') + '><summary><b>Data freshness</b> ' + (stale.length ? '<span class="warnc">· ' + stale.length + ' source' + (stale.length > 1 ? 's' : '') + ' over 2 hours old</span>' : '<span class="pos">· all sources under 2 hours old</span>') + '</summary>' + body + '</details>';
+}
+
+// ---------- supply simulation
+// Workers take their consumables once a day at a fixed time (setting). Production orders take their inputs when they start and give outputs when they finish.
+const tzOff = () => { const d = new Date(), f = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(d); const h = +f.find(x => x.type === 'hour').value, m = +f.find(x => x.type === 'minute').value; let diff = (h + m / 60) - (d.getUTCHours() + d.getUTCMinutes() / 60); if (diff > 12) diff -= 24; if (diff < -12) diff += 24; return diff; };
+const hhmm = h => { const x = ((Math.round(h * 60) % 1440) + 1440) % 1440; return String(Math.floor(x / 60)).padStart(2, '0') + ':' + String(x % 60).padStart(2, '0'); };
+const claimLocal = p => hhmm(claimH(p) + tzOff());
+function claimsIn(a, b, p) { const off = claimH(p) * HR, out = []; for (let t = (Math.floor((a - off) / DAY) + 1) * DAY + off; t <= b; t += DAY) out.push(t); return out; }
+function prodEvents(b, t0, hz) {
+  const ev = {}, add = (t, time, d) => { (ev[t] = ev[t] || []).push([time, d]); };
+  for (const l of b.lines || []) {
+    const orders = (l.orders || []).filter(o => !o.h); const running = orders.filter(o => o.s), queue = orders.filter(o => !o.s).map(o => Object.assign({}, o));
+    const slots = running.map(o => o.e || t0);
+    for (const o of running) if (o.e > t0) for (const [t, a] of Object.entries(o.o || {})) add(t, o.e, a);
+    while (slots.length < (l.cap || 1)) slots.push(t0);
+    let g = 0;
+    while (queue.length && g++ < 3000) {
+      slots.sort((x, y) => x - y); const start = Math.max(slots[0], t0); if (start > hz) break;
+      const o = queue.shift(), dur = o.d || HR;
+      for (const [t, a] of Object.entries(o.i || {})) add(t, start, -a);
+      for (const [t, a] of Object.entries(o.o || {})) add(t, start + dur, a);
+      slots[0] = start + dur; if (o.r) queue.push(o);
+    }
+  }
+  return ev;
+}
+function baseSim(b, now) { const t0 = Math.min(now, new Date(b.upd).getTime()), hz = now + 16 * DAY; return { b, t0, hz, ev: prodEvents(b, t0, hz), c: {} }; }
+function ser(sim, t) {
+  if (sim.c[t]) return sim.c[t];
+  const a = (sim.ev[t] || []).slice(); const w = (sim.b.wf || {})[t]; if (w) claimsIn(sim.t0, sim.hz, sim.b.p).forEach(c => a.push([c, -w]));
+  a.sort((x, y) => x[0] - y[0]); const s0 = (sim.b.inv || {})[t] || 0; let bal = s0; const T = [], B = [];
+  for (const [te, d] of a) { bal += d; T.push(te); B.push(bal); }
+  return sim.c[t] = { T, B, s0 };
+}
+function idx(T, x) { let lo = 0, hi = T.length; while (lo < hi) { const m = (lo + hi) >> 1; if (T[m] <= x) lo = m + 1; else hi = m; } return lo; }
+function stockAt(sim, t, x) { const S0 = ser(sim, t), i = idx(S0.T, x); return i ? S0.B[i - 1] : S0.s0; }
+function firstShort(sim, t, from, add) {
+  add = add || 0; const S0 = ser(sim, t), i = idx(S0.T, from); if ((i ? S0.B[i - 1] : S0.s0) + add < -1e-6) return from;
+  for (let j = i; j < S0.T.length; j++) if (S0.B[j] + add < -1e-6) return S0.T[j]; return Infinity;
+}
+function needFor(sim, t, arrT, endT) {
+  const S0 = ser(sim, t); let def = Math.max(-stockAt(sim, t, arrT), -stockAt(sim, t, endT));
+  for (let j = 0; j < S0.T.length; j++) { if (S0.T[j] <= arrT) continue; if (S0.T[j] > endT) break; def = Math.max(def, -S0.B[j]); }
+  return Math.max(0, Math.ceil(def - 1e-9));
+}
+function usedTickers(b) { const ts = new Set(Object.keys(b.wf || {})); (b.lines || []).forEach(l => (l.orders || []).forEach(o => Object.keys(o.i || {}).forEach(t => ts.add(t)))); return [...ts]; }
+function runouts(b, now) { const sim = baseSim(b, now); const rows = usedTickers(b).map(t => ({ t, ro: firstShort(sim, t, now), stock: Math.max(0, stockAt(sim, t, now)) })); rows.sort((a, c) => a.ro - c.ro); return { sim, rows }; }
+
+// ---------- TODAY
+function alertsFor(s) {
+  const A = []; const now = Date.now();
+  const add = (k, tag, text, small) => A.push({ k, tag, text, small });
+  s.bases.forEach(b => {
+    if (!b.inv) return; const { rows } = runouts(b, now); const f = rows[0];
+    if (f && f.ro !== Infinity) {
+      const h = (f.ro - now) / HR; const k = h < 24 ? 'crit' : h < 60 ? 'warn' : null;
+      if (k) add(k, 'Supply', '<b>' + esc(b.p) + '</b> is short of ' + rows.filter(x => x.ro - f.ro < 6 * HR).slice(0, 4).map(x => esc(x.t)).join(', ') + ' at ' + fmtDT(f.ro) + ' (' + rel(f.ro) + ')', 'Then ' + rows.slice(1, 4).filter(x => x.ro !== Infinity).map(x => esc(x.t) + ' ' + fmtDT(x.ro)).join(', ') + '. Check ship cargo before sending a new run.');
+    }
+    const age = now - new Date(b.upd).getTime();
+    if (age > 6 * HR) add('warn', 'Stale', '<b>' + esc(b.p) + '</b> data is ' + ageText(age) + ' old', 'FIO only updates when you open this base in the game. Open it, then take a new snapshot. The run-out times already account for the time since then.');
+    if (b.oldestRepairD > 45) add('warn', 'Repair', '<b>' + esc(b.p) + '</b> has buildings not repaired for ' + b.oldestRepairD + ' d', 'Lowest condition ' + (b.minCond * 100).toFixed(1) + '%.');
+  });
+  const stl = (s.ships || []).filter(sh => shipStatus(s, sh).stale);
+  if (stl.length) add('warn', 'Ships', 'FIO ship data is ' + ageText(Math.max(...stl.map(sh => shipStatus(s, sh).fAge))) + ' old', 'FIO has not seen the ships move since then, so positions and cargo may be out of date. Open the ships and the warehouse in the game, then log a new snapshot.');
+  (s.ships || []).forEach(sh => { if (sh.cond < 0.9) add('warn', 'Ship', esc(sh.r) + ' condition is ' + Math.round(sh.cond * 100) + '%', 'Repair before it drops further.'); });
+  const c = cashAt(s); const cash = c ? c.v : null; const horizon = now + 7 * DAY;
+  (s.loans || []).forEach(l => { if (l.nextDue && l.nextDue < horizon) {
+    const ok = cash != null && cash >= l.inst;
+    add(cash == null ? 'warn' : ok ? 'good' : 'crit', 'Loan', money(l.inst) + ' installment to ' + esc(l.partner) + ' due ' + fmtDT(l.nextDue) + ' (' + rel(l.nextDue) + ')', cash == null ? 'Enter your cash to check coverage.' : ok ? 'Cash covers it.' : 'Cash is below the installment.'); } });
+  (s.payments || []).forEach(p => add('warn', 'Payment', money(p.amt) + ' to ' + esc(p.partner) + ' still to pay' + (p.due ? ', due ' + fmtDT(p.due) : ''), 'Contract ' + esc(p.id) + '. Your cash includes this money until it is paid.'));
+  OPS.plans.filter(p => ['built', 'approved'].includes(cur(p.id).status)).forEach(p => { const n = daysTo(p.cogcEnd); if (n <= 7) add('warn', 'COGC', esc(p.pname) + ' ' + p.cogc.toLowerCase() + ' program ends ' + shortDate(p.cogcEnd) + ' (' + n + ' d)', 'Check the COGC motion and the vote.'); });
+  const old = (s.orders || []).filter(o => o.ageH > 24);
+  if (old.length) add('warn', 'Orders', old.length + ' CX order' + (old.length > 1 ? 's' : '') + ' open for over a day: ' + old.slice(0, 4).map(o => (o.s === 'S' ? 'sell ' : 'buy ') + o.n + ' ' + esc(o.tk)).join(', '), 'Check the price against the order book.');
+  const rank = { crit: 0, warn: 1, good: 2 }; return A.sort((a, b) => rank[a.k] - rank[b.k]);
+}
+function notifPanel() {
+  const L = (st.alerts || []).filter(a => a && a.text).slice(0, 15), newest = (st.alerts || [])[0], pushes = L.filter(a => a.level === 'push' && Date.now() - a.t < 12 * HR).length;
+  const rows = L.map(a => '<div class="nrow"><span><span class="badge ' + (a.level === 'push' ? 'crit' : '') + '">' + (a.level === 'push' ? 'Phone' : 'Info') + '</span> ' + esc(a.text) + '</span><span class="n sub">' + fmtDT(a.t) + '</span></div>').join('');
+  return '<details class="panel" data-open="notif"' + ((st.openB.notif != null ? st.openB.notif : pushes > 0) ? ' open' : '') + '><summary><b>Notifications</b> <span class="muted">· ' + (L.length ? L.length + ' recent' + (pushes ? ', ' + pushes + ' sent to your phone in the last 12 h' : '') : 'none yet; they appear after the scheduled snapshots run') + '</span></summary>' + (rows || '<p class="sub">The scheduled snapshots (08:15, 15:00, 21:00) add a note here when something is worth knowing. Phone pushes are only for a base running out within about 5 hours or production that no longer pays.</p>') + '</details>';
+}
+function viewToday() {
+  const s = latest();
+  if (!s) return '<div class="panel"><h2>No snapshot yet</h2><p>The GitHub job takes the first snapshot within about 30 minutes.</p></div>';
+  const w = worth(s), d = debt(s), nextLoan = (s.loans || []).filter(l => l.nextDue).sort((a, b) => a.nextDue - b.nextDue)[0];
+  const A = alertsFor(s), now = Date.now();
+  const tiles =
+    '<div class="tile"><div class="k">Net worth</div><div class="v">' + (w.full != null ? money(w.full) : money(w.ex)) + '</div><div class="s">' + (w.full != null ? 'including cash ' + money(w.cash.v) + (w.cash.est ? ' (estimate)' : '') : 'excluding cash, enter it below') + '</div></div>' +
+    '<div class="tile"><div class="k">Debt</div><div class="v">' + money(d) + '</div><div class="s">' + (s.loans || []).length + ' loans, 0% so far</div></div>' +
+    '<div class="tile"><div class="k">Next payment</div><div class="v">' + (nextLoan ? money(nextLoan.inst) : '–') + '</div><div class="s">' + (nextLoan ? fmtDT(nextLoan.nextDue) : 'none due') + '</div></div>' +
+    '<div class="tile"><div class="k">Open CX orders</div><div class="v">' + (s.orders || []).length + '</div><div class="s">' + (s.trades || []).length + ' trades in FIO</div></div>';
+  const alerts = '<ul class="alerts">' + (A.length ? A.map(a => '<li class="alert ' + a.k + '"><b>' + a.tag + '</b><span>' + a.text + '<small>' + a.small + '</small></span></li>').join('') : '<li class="alert good"><b>Clear</b><span>Nothing needs attention.</span></li>') + '</ul>';
+  let sup;
+  if (s.bases.every(b => b.inv)) {
+    sup = '<div>' + s.bases.map(b => {
+      const { rows } = runouts(b, now); const f = rows[0], rest = rows.slice(1, 4).filter(x => x.ro !== Infinity).map(x => esc(x.t) + ' ' + fmtDT(x.ro)).join(', ');
+      return '<div class="rw"><b>' + esc(b.p) + '</b><div>' + (f ? '<span class="' + (f.ro - now < 24 * HR ? 'critc' : '') + '">' + esc(f.t) + ' at ' + fmtDT(f.ro) + '</span> <span class="muted">' + rel(f.ro) + '</span>' : '–') + (rest ? '<div class="sub">Then ' + rest + '</div>' : '') + '</div></div>'; }).join('') + '</div>' +
+      '<p class="sub">Simulated order by order. Workers take their consumables once a day; the claim time is set per base on the Supply tab (default ' + new Date(Date.UTC(2026, 0, 1) + claimH() * HR).toLocaleTimeString('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }) + ' your time). Production orders take inputs when they start.</p>';
+  } else sup = '<p class="sub">The latest snapshot is in the old format. Log a new one for exact times.</p>';
+  const ships = shipsBlock(s);
+  const cashBox = '<div class="row"><label for="cashin" class="sub">Cash now in CIS (XIT FIN; FIO shows a stale balance)</label><input id="cashin" type="number" min="0" step="1000" placeholder="' + (st.cash[0] ? st.cash[0].cis : 'e.g. 650000') + '"><button class="act" id="cashsave">Save cash</button></div>';
+  return '<p class="asof">Latest snapshot ' + ageText(now - s.t) + ' ago (' + fmtDT(s.t) + '). A new one is taken about every 30 minutes by the GitHub job.</p>' +
+    '<section class="tiles">' + tiles + '</section>' + notifPanel() + '<div class="panel">' + cashBox + '</div>' +
+    '<div class="cols"><div><h2>Needs attention</h2>' + alerts + '</div><div><div class="panel"><h2>Supply runway</h2>' + sup + '</div><div class="panel"><h2>Ships and cargo</h2>' + ships + '</div></div></div>' + freshPanel(s);
+}
+
+// ---------- SUPPLY
+function shipOf(s) { const ships = s.ships || []; const reg = st.sup.ship && ships.find(x => x.r === st.sup.ship) ? st.sup.ship : (ships.find(x => /benten/i.test(x.to || '') && x.etaH <= 0) || ships[0] || {}).r; return ships.find(x => x.r === reg) || null; }
+function planSupply(s, tgtOf) {
+  const now = Date.now(), leave = Math.max(now, st.sup.leave || now);
+  const bases = s.bases.map(b => {
+    const on = incl(b.p), tgt = tgtOf ? tgtOf(b.p) : targetD(b.p); const arrT = leave + flightH(b.p) * HR, endT = arrT + tgt * DAY;
+    const sim = baseSim(b, now), mats = []; let tons = 0, vol = 0, value = 0, firstNow = Infinity, lastsTo = Infinity;
+    usedTickers(b).forEach(t => {
+      const stNow = Math.max(0, stockAt(sim, t, now)), ro = firstShort(sim, t, now), onArr = Math.max(0, stockAt(sim, t, arrT));
+      const need = on ? needFor(sim, t, arrT, endT) : 0, after = need ? firstShort(sim, t, arrT, need) : ro;
+      const w = MATS[t] || [0, 0]; if (need) { tons += need * w[0]; vol += need * w[1]; value += need * pask(s.px, t); }
+      firstNow = Math.min(firstNow, ro); if (need || on) lastsTo = Math.min(lastsTo, after);
+      mats.push({ t, stNow, ro, onArr, need, after });
+    });
+    mats.sort((a, c) => a.ro - c.ro);
+    return { b, on, tgt, arrT, endT, mats, tons, vol, value, firstNow, lastsTo, early: firstNow < arrT };
+  });
+  const total = {}, per = {};
+  bases.filter(x => x.on).forEach(x => { per[x.b.p] = {}; x.mats.forEach(m => { if (m.need > 0) { total[m.t] = (total[m.t] || 0) + m.need; per[x.b.p][m.t] = m.need; } }); });
+  const tons = bases.filter(x => x.on).reduce((a, x) => a + x.tons, 0), vol = bases.filter(x => x.on).reduce((a, x) => a + x.vol, 0);
+  return { bases, total, per, tons, vol, leave };
+}
+function fillShip(s) {
+  const sh = shipOf(s); if (!sh || !sh.wc) return null; const capT = sh.wc * 0.98, capV = sh.vc * 0.98; let best = null;
+  for (let d = 0.5; d <= 15.001; d = Math.round((d + 0.05) * 100) / 100) { const pl = planSupply(s, () => d); if (pl.tons <= capT && pl.vol <= capV) best = d; else break; }
+  return best;
+}
+function packages(s, pl) {
+  const out = []; const wh = (s.warehouses || [])[0] || { items: {} }; const sh = shipOf(s);
+  const have = t => (wh.items[t] || 0) + (st.sup.countShip && sh ? (sh.cargo[t] || 0) : 0);
+  const cap = Object.keys(pl.total).filter(t => !st.sup.noBuy[t]);
+  const d = new Date(), z = n => String(n).padStart(2, '0'); const stamp = z(d.getMonth() + 1) + z(d.getDate()) + ' ' + z(d.getHours()) + z(d.getMinutes());
+  const CFG = 'Configure on Execution'; const act = pl.bases.filter(x => x.on && Object.keys(pl.per[x.b.p] || {}).length);
+  if (act.length) {
+    const groups = [{ type: 'Manual', name: 'All supplies', materials: Object.fromEntries(cap.map(t => [t, pl.total[t]])) }];
+    act.forEach(x => groups.push({ type: 'Manual', name: x.b.p + ' supplies', materials: Object.assign({}, pl.per[x.b.p]) }));
+    const actions = [];
+    if (cap.length) actions.push({ type: 'CX Buy', name: 'Buy what is missing at ask', group: 'All supplies', exchange: 'CI1', allowUnfilled: false, buyPartial: true, useCXInv: true, priceLimits: Object.fromEntries(cap.map(t => [t, up3(pask(s.px, t) * 1.03)])) });
+    const bq = {}, bidT = [], instT = [];
+    cap.forEach(t => { const q = Math.max(0, pl.total[t] - have(t)); if (!q) return; const ak = pask(s.px, t), bd = pbid(s.px, t), tk = bd >= 1000 ? 10 : bd >= 100 ? 1 : 0.1, bp = bd ? Math.round((bd + tk) * 10) / 10 : 0; bq[t] = q; if (ak && bp && bp < ak && (ak - bp) / ak >= 0.015 && (ak - bp) / ak <= 0.15 && (ak - bp) * q >= 2000) bidT.push([t, bp]); else instT.push(t); });
+    if (bidT.length) {
+      const g2 = [{ type: 'Manual', name: 'Bid materials', materials: Object.fromEntries(bidT.map(([t]) => [t, bq[t]])) }], a2 = [];
+      if (instT.length) g2.push({ type: 'Manual', name: 'Instant materials', materials: Object.fromEntries(instT.map(t => [t, bq[t]])) });
+      a2.push({ type: 'CX Buy', name: 'Place bids', group: 'Bid materials', exchange: 'CI1', allowUnfilled: true, buyPartial: true, useCXInv: true, priceLimits: Object.fromEntries(bidT.map(([t, p]) => [t, p])) });
+      if (instT.length) a2.push({ type: 'CX Buy', name: 'Buy the rest at ask', group: 'Instant materials', exchange: 'CI1', allowUnfilled: false, buyPartial: true, useCXInv: true, priceLimits: Object.fromEntries(instT.map(t => [t, up3(pask(s.px, t) * 1.03)])) });
+      const sv = bidT.reduce((a, [t, p]) => a + (pask(s.px, t) - p) * bq[t], 0);
+      out.push({ title: '0 · Place bids first', when: 'Places buy orders one price step above the top bid for ' + bidT.map(x => x[0]).join(', ') + ' (about ' + money(sv) + ' cheaper than ask if they all fill)' + (instT.length ? ' and buys the rest at ask' : '') + '. Run package 1 after the bids have filled; it then only buys what is still missing. Running it earlier buys the same goods again at ask.', json: { global: { name: 'Bids ' + act.map(x => x.b.p).join(' and ') + ' ' + stamp }, groups: g2, actions: a2 } });
+    }
+    actions.push({ type: 'Refuel', name: 'Refuel', origin: CFG, buyMissingFuel: true });
+    act.forEach(x => actions.push({ type: 'MTRA', name: 'Load ' + x.b.p + ' supplies', group: x.b.p + ' supplies', origin: CFG, dest: CFG }));
+    out.push({ title: '1 · Load and send at Benten', when: 'Buys what is not in the Benten warehouse at ask (capped 3% above), refuels, then loads each base\'s supplies into the ship.', json: { global: { name: 'Load ' + act.map(x => x.b.p).join(' and ') + ' ' + stamp }, groups, actions } });
+    act.forEach(x => out.push({ title: '2 · At ' + x.b.p, when: 'Unloads the supplies into the base. Move the products yourself.', json: { global: { name: 'At ' + x.b.p + ' ' + stamp }, groups: [{ type: 'Manual', name: x.b.p + ' supplies', materials: Object.assign({}, pl.per[x.b.p]) }], actions: [{ type: 'MTRA', name: 'Unload supplies to base', group: x.b.p + ' supplies', origin: CFG, dest: CFG }] } }));
+  }
+  const safe = x => String(x).normalize('NFKD').replace(/[^A-Za-z0-9 _]/g, ' ').replace(/\s+/g, ' ').trim() || 'Package';
+  out.forEach(p => { const j = p.json; j.global.name = safe(j.global.name); (j.groups || []).forEach(g => g.name = safe(g.name)); (j.actions || []).forEach(a => { a.name = safe(a.name); if (a.group) a.group = safe(a.group); }); });
+  return out;
+}
+function bar(label, used, cap) { const pct = cap ? used / cap * 100 : 0, k = pct > 100 ? 'crit' : pct > 90 ? 'warn' : ''; return '<div class="l"><span>' + label + '</span><div class="meter"><i class="' + k + '" style="width:' + Math.min(100, pct) + '%"></i></div><span>' + num(used) + ' / ' + num(cap) + '</span></div>'; }
+function leaveText(ms) { const f = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(ms)), g = k => f.find(x => x.type === k).value; return g('day') + '-' + g('month') + ' ' + g('hour') + ':' + g('minute'); }
+function parseLeave(v) { v = (v || '').trim(); let m = /^(\d{1,2})[-\/.](\d{1,2})(?:[-\/.](\d{2,4}))?\s+(\d{1,2})[:.]?(\d{2})$/.exec(v), Y, M, D, h, mi; const now = Date.now();
+  if (m) { D = +m[1]; M = +m[2]; Y = m[3] ? (+m[3] < 100 ? 2000 + +m[3] : +m[3]) : new Date(now + tzOff() * HR).getUTCFullYear(); h = +m[4]; mi = +m[5]; }
+  else { m = /^(\d{1,2})[:.](\d{2})$/.exec(v); if (!m) return null; h = +m[1]; mi = +m[2]; const lt = new Date(now + tzOff() * HR); Y = lt.getUTCFullYear(); M = lt.getUTCMonth() + 1; D = lt.getUTCDate(); }
+  if (M < 1 || M > 12 || D < 1 || D > 31 || h > 23 || mi > 59) return null;
+  let t = Date.UTC(Y, M - 1, D, h, mi) - tzOff() * HR;
+  if (!(/^(\d{1,2})[:.](\d{2})$/.test(v)) && !(/\d{1,2}[-\/.]\d{1,2}[-\/.]\d{2,4}/.test(v)) && t < now - 30 * DAY) t = Date.UTC(Y + 1, M - 1, D, h, mi) - tzOff() * HR;
+  else if (/^(\d{1,2})[:.](\d{2})$/.test(v) && t < now) t += DAY;
+  return isNaN(t) ? null : t; }
+function toLocalInput(ms) { const d = new Date(ms), z = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()) + 'T' + z(d.getHours()) + ':' + z(d.getMinutes()); }
+const bidPlus = bd => { if (!bd) return 0; const tk = bd >= 1000 ? 10 : bd >= 100 ? 1 : 0.1; return Math.round((bd + tk) * 10) / 10; };
+function kitObjects(text) {
+  const out = []; let depth = 0, start = -1, inStr = false, esc_ = false;
+  for (let i = 0; i < text.length; i++) { const c = text[i];
+    if (inStr) { if (esc_) esc_ = false; else if (c === '\\') esc_ = true; else if (c === '"') inStr = false; continue; }
+    if (c === '"') inStr = true; else if (c === '{') { if (depth === 0) start = i; depth++; } else if (c === '}') { depth--; if (depth === 0 && start >= 0) { try { out.push(JSON.parse(text.slice(start, i + 1))); } catch (e) {} start = -1; } } }
+  return out;
+}
+function kitResult(s, text) {
+  const objs = kitObjects(text); if (!objs.length) return '<p class="warnc">Could not read this as an XIT package. Paste the JSON from PRUNplanner\'s XIT button.</p>';
+  const wh = (s.warehouses || [])[0] || { items: {} }, px = s.px || {}, book = s.book || {};
+  return objs.map((pkg, pi) => {
+    const mats = {}; (pkg.groups || []).forEach(g => { if (g.type === 'Manual' && g.materials) for (const [t, q] of Object.entries(g.materials)) mats[t] = (mats[t] || 0) + q; });
+    if (!Object.keys(mats).length) return '<p class="warnc">Package ' + (pi + 1) + ' has no fixed material list (only Manual groups are supported).</p>';
+    const rows = Object.entries(mats).map(([t, q]) => {
+      const have = wh.items[t] || 0, buy = Math.max(0, q - have), ask = pask(px, t) || ask_(t) || 0, known = !!(px[t] || P[t]), bd = pbid(px, t) || (P[t] && P[t][1]) || 0, bp = bidPlus(bd);
+      let depth = null; const lad = book[t]; if (lad && lad.length && buy > 0) { let rem = buy, c = 0, part = false; for (const [p, n] of lad) { const k = Math.min(rem, n); c += k * p; rem -= k; if (rem <= 0) break; } if (rem > 0) { c += rem * lad[lad.length - 1][0] * 1.15; part = true; } depth = { c, part }; }
+      const sv = (ask && bp && bp < ask) ? (ask - bp) * buy : 0, bid = !!(buy && ask && bp && bp < ask && (ask - bp) / ask >= 0.015 && (ask - bp) / ask <= 0.15 && sv >= 2000);
+      return { t, q, have, buy, ask, known, bp, depth, sv, bid, cost: buy * ask };
+    });
+    const tot = rows.reduce((a, x) => a + x.cost, 0), save = rows.reduce((a, x) => a + (x.bid ? x.sv : 0), 0), dep = rows.reduce((a, x) => a + (x.depth ? x.depth.c : x.cost), 0), unk = rows.filter(x => !x.known);
+    const nm = (pkg.global && pkg.global.name) || 'PRUNplanner package', first = (pkg.actions || []).find(a => a.type === 'CX Buy') || {}, exch = first.exchange || 'CI1';
+    const p1 = { global: { name: 'Bids ' + nm }, groups: [], actions: [] };
+    const bidR = rows.filter(x => x.bid), restR = rows.filter(x => !x.bid && x.buy > 0);
+    if (bidR.length) { p1.groups.push({ type: 'Manual', name: 'Bid materials', materials: Object.fromEntries(bidR.map(x => [x.t, x.buy])) }); p1.actions.push({ type: 'CX Buy', name: 'Place bids', group: 'Bid materials', exchange: exch, allowUnfilled: true, buyPartial: !!first.buyPartial, useCXInv: first.useCXInv !== false, priceLimits: Object.fromEntries(bidR.map(x => [x.t, x.bp])) }); }
+    if (restR.length) { p1.groups.push({ type: 'Manual', name: 'Instant materials', materials: Object.fromEntries(restR.map(x => [x.t, x.buy])) }); p1.actions.push({ type: 'CX Buy', name: 'Buy the rest at ask', group: 'Instant materials', exchange: exch, allowUnfilled: false, buyPartial: !!first.buyPartial, useCXInv: first.useCXInv !== false, priceLimits: Object.fromEntries(restR.filter(x => x.ask).map(x => [x.t, up3(x.ask * 1.03)])) }); }
+    const p2 = JSON.parse(JSON.stringify(pkg)); p2.global = { name: 'Buy and move ' + nm };
+    (p2.actions || []).forEach(a => { if (a.type === 'CX Buy') { const g = (p2.groups || []).find(x => x.name === a.group); const ts = g && g.materials ? Object.keys(g.materials) : []; a.priceLimits = Object.fromEntries(ts.map(t => { const x = rows.find(y => y.t === t); return x && x.ask ? [t, up3(x.ask * 1.03)] : null; }).filter(Boolean)); a.name = 'Buy what is missing at ask'; } });
+    const safe_ = x => String(x).normalize('NFKD').replace(/[^A-Za-z0-9 _]/g, ' ').replace(/\s+/g, ' ').trim() || 'Package';
+    [p1, p2].forEach(p => { p.global.name = safe_(p.global.name); (p.groups || []).forEach(g => g.name = safe_(g.name)); (p.actions || []).forEach(a => { a.name = safe_(a.name); if (a.group) a.group = safe_(a.group); }); });
+    st.kitPk = st.kitPk || {}; st.kitPk['k' + pi + 'a'] = p1; st.kitPk['k' + pi + 'b'] = p2;
+    const f = v => v ? (v < 100 ? v.toFixed(1) : num(v)) : '–';
+    const table = '<div class="tablewrap"><table><thead><tr><th>Material</th><th>Need</th><th class="hide-s">In warehouse</th><th>To buy</th><th>Ask</th><th>Bid +1 step</th><th>Cost at ask</th><th class="hide-s">Through order book</th><th>Saved if bid</th></tr></thead><tbody>' +
+      rows.map(x => '<tr class="' + (x.buy ? '' : 'muted') + '"><td>' + esc(x.t) + (x.known ? '' : ' <span class="warnc">no price</span>') + '</td><td class="n">' + num(x.q) + '</td><td class="n hide-s">' + num(x.have) + '</td><td class="n"><b>' + (x.buy ? num(x.buy) : '–') + '</b></td><td class="n">' + f(x.ask) + '</td><td class="n">' + f(x.bp) + '</td><td class="n">' + (x.buy ? money(x.cost) : '–') + '</td><td class="n hide-s">' + (x.depth ? money(x.depth.c) + (x.depth.part ? '+' : '') : '–') + '</td><td class="n pos">' + (x.bid ? money(x.sv) : '–') + '</td></tr>').join('') +
+      '<tr><td><b>Total</b></td><td></td><td class="hide-s"></td><td></td><td></td><td></td><td class="n"><b>' + money(tot) + '</b></td><td class="n hide-s"><b>' + money(dep) + '</b></td><td class="n pos"><b>' + money(save) + '</b></td></tr></tbody></table></div>';
+    const pkb = (key, title, when) => '<div class="pk"><b>' + title + '</b><span class="sub">' + when + '</span><textarea id="pk' + key + '" readonly aria-label="' + title + '">' + esc(JSON.stringify(st.kitPk[key], null, 1)) + '</textarea><div class="row"><button class="act" data-copy="' + key + '">Copy JSON</button></div></div>';
+    return '<h3 class="sm">' + esc(nm) + '</h3>' + table +
+      (unk.length ? '<p class="sub warnc">No price in the latest snapshot for ' + unk.map(x => esc(x.t)).join(', ') + '; they are bought without a price limit. A new snapshot adds more materials.</p>' : '') +
+      '<p class="sub">Prices from the snapshot of ' + fmtDT(s.t) + ' (' + ageText(Date.now() - s.t) + ' old). "To buy" subtracts what is in the Benten warehouse. If every bid fills you save about ' + money(save) + ' of ' + money(tot) + '. The order-book column prices the whole amount through the sell orders, which is what buying it all at once really costs.</p>' +
+      '<div class="cols">' + (bidR.length ? pkb('k' + pi + 'a', '1 · Place bids', 'Bids one price step above the top bid (only where it is within 15% of the ask) for ' + bidR.map(x => esc(x.t)).join(', ') + ', and buys the rest at ask. Run package 2 after the bids fill.') : '<div class="pk"><b>No bids worth placing</b><span class="sub">No material saves at least 1.5% and 2,000 with a bid within 15% of the ask (wider gaps rarely fill). Use package 2.</span></div>') + pkb('k' + pi + 'b', '2 · Buy what is missing and move it', 'Your PRUNplanner package with price limits at ask +3% filled in, followed by its original transfer step. It only buys what is not already in the warehouse.') + '</div>';
+  }).join('');
+}
+function kitPanel(s) {
+  const out = (st.kit && st.kit.trim()) ? (s ? kitResult(s, st.kit) : '<p class="sub">Take a snapshot first so prices are available.</p>') : '';
+  const nb = OPS.plans.find(p => cur(p.id).status === 'approved');
+  return '<details class="panel" data-open="kit"' + ((st.openB.kit != null ? st.openB.kit : !!st.kit) ? ' open' : '') + '><summary><b>New base: price the build kit and first supply</b> <span class="muted">· ' + (nb ? 'next base: ' + esc(nb.name) : 'paste from PRUNplanner') + '</span></summary><p class="sub">Use the XIT button on PRUNplanner\'s Construction or Supply tab (the kit for a new base and its first supply) and paste the JSON here. The page prices it from the latest snapshot and returns two packages: bids first, then buy the rest and move it. Several packages can be pasted together.</p>' +
+    '<label class="lbl" for="kitin">PRUNplanner XIT package</label><textarea id="kitin" rows="4" placeholder="{&quot;actions&quot;:[…],&quot;global&quot;:{…},&quot;groups&quot;:[…]}">' + esc(st.kit || '') + '</textarea><div class="row" style="margin:6px 0 10px"><button class="act" id="kitgo">Price it</button><button class="act plain" id="kitclear">Clear</button></div>' + out + '</details>';
+}
+function viewSupply() {
+  const s = latest(); if (!s || !s.bases.every(b => b.inv)) return '<div class="panel"><h2>Supply needs a new snapshot</h2><p>The GitHub job takes a snapshot about every 30 minutes. The supply plan needs inventories and production orders.</p></div>';
+  const now = Date.now(), pl = planSupply(s), sh = shipOf(s), wh = (s.warehouses || [])[0] || { items: {} };
+  const shipOpts = (s.ships || []).map(x => '<option value="' + esc(x.r) + '"' + (sh && sh.r === x.r ? ' selected' : '') + '>' + esc(x.r) + ' · ' + esc(String(x.to || '').split(' (')[0]) + '</option>').join('');
+  const head = '<div class="panel"><div class="row" style="align-items:flex-end">' +
+    '<div class="field"><label class="sub" for="ship">Ship</label><select id="ship">' + shipOpts + '</select></div>' +
+    '<div class="field"><label class="sub" for="leave">Leaves Benten</label><div class="dtw"><input type="text" id="leave" placeholder="DD-MM HH:MM" maxlength="16" value="' + leaveText(pl.leave) + '"><span class="cal" aria-hidden="true">&#128197;</span><input type="datetime-local" id="leavepick" title="Pick date" aria-label="Pick date" value="' + toLocalInput(pl.leave) + '"></div></div>' +
+    '<div class="field"><label class="sub" for="deft">Default target (days after arrival)</label><input type="number" class="sm" id="deft" step="0.1" min="0.5" value="' + (S().defTarget || 2.5) + '"></div>' +
+    '<div class="field"><span class="sub">&nbsp;</span><button class="act plain" id="fill">Fill ship</button></div></div>' +
+    '<p class="sub">Each base has its own worker claim time, in your local time (default 07:15). FIO does not report it. To find it, take a snapshot shortly before and after the expected time; stock should drop by one day of worker use.</p></div>';
+  const rows = pl.bases.map(x => {
+    const k = x.b.p;
+    return '<div class="bc ' + (x.on ? '' : 'off') + '"><div class="row" style="justify-content:space-between"><label class="row"><input type="checkbox" data-inc="' + esc(k) + '"' + (x.on ? ' checked' : '') + ' aria-label="Include ' + esc(k) + '"><b style="font-size:17px">' + esc(k) + '</b></label><span class="n">' + (x.on ? num(x.tons) + ' t · ' + num(x.vol) + ' m³ · ' + money(x.value) : 'not included') + '</span></div>' +
+      '<div class="row"><div class="field"><label class="sub" for="fl-' + esc(k) + '">Flight hours' + (flightSrc(k) === 'observed' ? ' (observed)' : '') + '</label><input type="number" class="sm" id="fl-' + esc(k) + '" data-fl="' + esc(k) + '" step="0.5" min="0" value="' + flightH(k) + '"></div>' +
+      '<div class="field"><label class="sub" for="tg-' + esc(k) + '">Target days</label><input type="number" class="sm" id="tg-' + esc(k) + '" data-tg="' + esc(k) + '" step="0.1" min="0.5" value="' + x.tgt + '"></div><div class="field"><label class="sub" for="cl-' + esc(k) + '">Workers claim (your time)</label><input type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="sm" id="cl-' + esc(k) + '" data-cl="' + esc(k) + '" value="' + claimLocal(k) + '"></div></div>' +
+      '<div class="kv"><div><span>Arrives</span><b class="when">' + fmtDT(x.arrT) + '</b></div><div><span>Runs out without delivery</span><b class="when ' + (x.early ? 'critc' : '') + '">' + fmtDT(x.firstNow) + '</b>' + (x.early ? '<span class="critc">before arrival</span>' : '') + '</div><div><span>Lasts until with delivery</span><b class="when">' + (x.on ? fmtDT(x.lastsTo) : '–') + '</b></div></div></div>';
+  }).join('');
+  const table = '<div class="panel"><h2>Run plan</h2><div class="bcs">' + rows + '</div></div>';
+  const load = '<div class="panel"><h2>Ship load</h2>' + (sh ? '<div class="load">' + bar('Weight', pl.tons, sh.wc * 0.98) + bar('Volume', pl.vol, sh.vc * 0.98) + '</div><p class="sub">On board (' + ageText(Date.now() - ((s.fresh && s.fresh.ships && s.fresh.ships[sh.r] && s.fresh.ships[sh.r].c) || s.t)) + ' old): supplies ' + itemsText(cargoSplit(s, sh).S) + '. Products ' + itemsText(cargoSplit(s, sh).P) + '. Capacity ' + num(sh.wc) + ' t and ' + num(sh.vc) + ' m³; 2% kept free.</p>' : '<p class="sub">No ship in the snapshot.</p>') + '</div>';
+  const mats = pl.bases.filter(x => x.on).map(x => '<details' + (st.openB[x.b.p] ? ' open' : '') + ' data-open="' + esc(x.b.p) + '"><summary>' + esc(x.b.p) + ' materials</summary><div class="tablewrap"><table><thead><tr><th>Material</th><th class="hide-s">Stock now</th><th>Short at</th><th class="hide-s">On arrival</th><th>Send</th><th>Lasts until</th></tr></thead><tbody>' +
+    x.mats.filter(m => m.ro !== Infinity || m.need).map(m => '<tr><td>' + esc(m.t) + '</td><td class="n hide-s">' + num(m.stNow) + '</td><td class="when">' + fmtDT(m.ro) + '</td><td class="n hide-s">' + num(m.onArr) + '</td><td class="n"><b>' + (m.need ? num(m.need) : '–') + '</b></td><td class="when">' + (m.need ? fmtDT(m.after) : '–') + '</td></tr>').join('') + '</tbody></table></div></details>').join('');
+  const buyRows = Object.keys(pl.total).sort().map(t => {
+    const have = (wh.items[t] || 0) + (st.sup.countShip && sh ? (sh.cargo[t] || 0) : 0), buy = Math.max(0, pl.total[t] - have), a = pask(s.px, t), skip = !!st.sup.noBuy[t];
+    const bd = pbid(s.px, t), tick = bd >= 1000 ? 10 : bd >= 100 ? 1 : 0.1, bp = bd ? Math.round((bd + tick) * 10) / 10 : 0, sv = (a && bp && bp < a && (a - bp) / a <= 0.15) ? (a - bp) * buy : 0;
+    return { t, need: pl.total[t], have, buy, a, bp, sv, cost: skip ? 0 : buy * a, skip };
+  });
+  const tot = buyRows.reduce((a, r) => a + r.cost, 0), totSave = buyRows.reduce((a, r) => a + (r.skip ? 0 : r.sv), 0);
+  const buy = '<div class="panel"><h2>Buy list</h2><div class="row"><label class="sub"><input type="checkbox" id="cship"' + (st.sup.countShip ? ' checked' : '') + '> count cargo already on the ship</label></div><div class="tablewrap"><table><thead><tr><th>Buy</th><th>Material</th><th>To buy</th><th>Ask</th><th>Cost</th><th title="Saved if the bid fills">Saved if bid</th></tr></thead><tbody>' +
+    (buyRows.map(r => '<tr class="' + (r.buy ? '' : 'muted') + '"><td><input type="checkbox" data-nb="' + esc(r.t) + '"' + (r.skip ? '' : ' checked') + ' aria-label="Buy ' + esc(r.t) + '"></td><td>' + esc(r.t) + '<div class="sub">need ' + num(r.need) + ', have ' + num(r.have) + '</div></td><td class="n"><b>' + (r.buy ? num(r.buy) : '–') + '</b></td><td class="n">' + (r.a ? (r.a < 100 ? r.a.toFixed(1) : num(r.a)) : '–') + (r.bp ? '<div class="sub">bid ' + (r.bp < 100 ? r.bp.toFixed(1) : num(r.bp)) + '</div>' : '') + '</td><td class="n">' + (r.buy && !r.skip ? money(r.cost) : '–') + '</td><td class="n pos">' + (r.buy && !r.skip && r.sv ? money(r.sv) : '–') + '</td></tr>').join('') || '<tr><td colspan="5" class="muted">Nothing to send.</td></tr>') + '</tbody></table></div><p class="sub">Total to buy at ask: ' + money(tot) + '. If every bid (one price step above the top bid) fills you save about ' + money(totSave) + (tot ? ' (' + (totSave / tot * 100).toFixed(1) + '%)' : '') + ', but only if the sellers come down in time and the goods arrive before the run-out dates above. Open buy orders are not counted; cancel them first or they may double up.</p></div>';
+  const pk = packages(s, pl);
+  const pkgs = '<div class="panel"><h2>XIT ACT packages</h2><div class="cols">' + (pk.map((p, i) => '<div class="pk"><b>' + esc(p.title) + '</b><span class="sub">' + esc(p.when) + '</span><textarea id="pk' + i + '" readonly aria-label="' + esc(p.title) + '">' + esc(JSON.stringify(p.json, null, 1)) + '</textarea><div class="row"><button class="act" data-copy="' + i + '">Copy JSON</button></div></div>').join('') || '<p class="sub">No packages: nothing to send.</p>') + '</div></div>';
+  return '<p class="asof">Based on the snapshot from ' + fmtDT(s.t) + ' (' + ageText(now - s.t) + ' ago). Stock is simulated from each base\'s own FIO time, so old base data is accounted for.</p>' + head + table + '<div class="cols"><div>' + load + '</div><div>' + buy + '</div></div><div class="panel"><h2>Materials per base</h2>' + (mats || '<p class="sub">Include at least one base.</p>') + '</div>' + pkgs;
+}
+
+// ---------- MONEY
+
+function incomeActual(pts) {
+  const P0 = st.finch.length >= 2 ? pts.filter(p => p.kind === 'xit') : pts;
+  if (P0.length < 2) return null; const b = P0[P0.length - 1], older = P0.slice(0, -1).filter(p => b.t - p.t >= 3 * DAY); if (!older.length) return null;
+  const a = older.reduce((m, p) => Math.abs((b.t - p.t) - 7 * DAY) < Math.abs((b.t - m.t) - 7 * DAY) ? p : m); const days = (b.t - a.t) / DAY;
+  return { per: (b.v - a.v) / days, from: a.t, to: b.t, days };
+}
+function incomeLive() { const s = latest(); if (!s || !s.bases.every(b => b.net)) return null; return liveProfit(s).reduce((a, x) => a + x.profit, 0); }
+function nowNetWorth(act) {
+  const sa = latestAny(), w = sa ? worth(sa) : null;
+  const l = st.finch[st.finch.length - 1]; if (l) return { v: l.eq + (act ? act.per : 0) * (Date.now() - l.t) / DAY, note: 'XIT export of ' + dayText(l.t) + ' plus growth since' };
+  if (w && w.full != null) return { v: w.full, note: 'latest snapshot with cash entered' };
+  return w ? { v: w.ex, note: 'excluding cash' } : null;
+}
+function debtAt(s, t) { let d = debt(s); (s.loans || []).forEach(l => { const left = l.n - l.paid; for (let i = 0; i < left; i++) if ((l.nextDue || Date.now()) + i * 7 * DAY <= t) d -= l.inst; }); return Math.max(0, d); }
+function projectionBlock(pts) {
+  const sa = latestAny(), act = incomeActual(pts), live = incomeLive(), nw = nowNetWorth(act), now = Date.now();
+  if (!nw || (!act && live == null)) return { html: '<p class="sub">This needs a net worth point and about a week of history. Import your XIT export on the Log tab, or log snapshots with cash.</p>', proj: null };
+  const pace = act ? act.per : live, end = Date.UTC(2027, 0, 1);
+  const dates = [['In 7 days', now + 7 * DAY], ['In 14 days', now + 14 * DAY], ['In 30 days', now + 30 * DAY], ['1 Jan 2027', end]];
+  const rows = dates.map(([n, T]) => { const d = (T - now) / DAY; return '<tr><td>' + n + '</td><td class="n">' + (act ? money(nw.v + act.per * d) : '–') + '</td><td class="n hide-s">' + (live != null ? money(nw.v + live * d) : '–') + '</td><td class="n">' + (sa ? money(debtAt(sa, T)) : '–') + '</td></tr>'; }).join('');
+  const loans = sa ? (sa.loans || []) : [], wk = loans.reduce((a, l) => a + (l.n - l.paid > 0 ? l.inst : 0), 0);
+  const p30 = sa ? debt(sa) - debtAt(sa, now + 30 * DAY) : 0, free = pace - wk / 7;
+  const last = loans.length ? Math.max(...loans.map(l => (l.nextDue || now) + Math.max(0, l.n - l.paid - 1) * 7 * DAY)) : null;
+  const nb = OPS.plans.find(p => cur(p.id).status === 'approved');
+  const tiles = '<div class="tiles">' +
+    (act ? '<div class="tile"><div class="k">Recent pace</div><div class="v">' + money(act.per) + ' / day</div><div class="s">net worth growth ' + dayText(act.from) + ' to ' + dayText(act.to) + '; stock building up counts</div></div>' : '') +
+    (live != null ? '<div class="tile"><div class="k">Pace of current queues</div><div class="v">' + money(live) + ' / day</div><div class="s">live profit of the running queues after repairs</div></div>' : '') +
+    '<div class="tile"><div class="k">Loan payments, 30 days</div><div class="v">' + money(p30) + '</div><div class="s">' + (pace > 0 ? Math.round(p30 / (pace * 30) * 100) + '% of income' : '') + (last ? '; debt free ' + dayText(last) : '') + '</div></div>' +
+    (nb && free > 0 ? '<div class="tile"><div class="k">Next base: ' + esc(nb.pname) + '</div><div class="v">' + Math.ceil(CALC[nb.id].cost / free) + ' days</div><div class="s">of income after loan payments to cover its ' + money(CALC[nb.id].cost) + ' build cost</div></div>' : '') + '</div>';
+  const html = tiles + '<div class="tablewrap"><table><thead><tr><th>Net worth in</th><th>Recent pace</th><th class="hide-s">Queue pace</th><th>Loans left</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+    '<p class="sub">Starting from ' + money(nw.v) + ' now (' + nw.note + '). It assumes income stays at the pace shown, no new bases, and prices stay the same. Loan payments do not change net worth because a payment lowers cash and debt equally.</p>';
+  return { html, proj: [{ t: now, v: nw.v }, { t: end, v: nw.v + pace * (end - now) / DAY }] };
+}
+function chartSvg(pts, proj) {
+  const W = 760, H = 260, L = 56, R = 14, T = 14, B = 28;
+  if (!pts.length) return '<p class="sub">No points yet.</p>';
+  const all = pts.concat(proj || []); const t0 = Math.min(...pts.map(p => p.t)), t1 = Math.max(Date.now(), ...all.map(p => p.t));
+  const lo = Math.min(...all.map(p => p.v)), hi = Math.max(...all.map(p => p.v)); const pad = (hi - lo) * 0.15 || hi * 0.1, y0 = Math.max(0, lo - pad), y1 = hi + pad;
+  const X = t => L + (W - L - R) * (t - t0) / ((t1 - t0) || 1), Y = v => T + (H - T - B) * (1 - (v - y0) / ((y1 - y0) || 1));
+  let g = ''; for (let i = 0; i <= 4; i++) { const v = y0 + (y1 - y0) * i / 4, y = Y(v); g += '<line class="axis" x1="' + L + '" x2="' + (W - R) + '" y1="' + y + '" y2="' + y + '"/><text x="' + (L - 6) + '" y="' + (y + 4) + '" text-anchor="end">' + money(v) + '</text>'; }
+  for (let i = 0; i <= 4; i++) { const t = t0 + (t1 - t0) * i / 4; g += '<text x="' + X(t) + '" y="' + (H - 8) + '" text-anchor="middle">' + dayText(t) + '</text>'; }
+  const line = pts.map((p, i) => (i ? 'L' : 'M') + X(p.t).toFixed(1) + ' ' + Y(p.v).toFixed(1)).join(' ');
+  const dots = pts.map(p => p.kind === 'xit' ? '<rect x="' + (X(p.t) - 4) + '" y="' + (Y(p.v) - 4) + '" width="8" height="8" fill="var(--surface)" stroke="var(--muted)" stroke-width="2"/>' : '<circle cx="' + X(p.t) + '" cy="' + Y(p.v) + '" r="5" fill="var(--accent)"/>').join('');
+  const pl = proj && proj.length > 1 ? '<path d="' + proj.map((p, i) => (i ? 'L' : 'M') + X(p.t).toFixed(1) + ' ' + Y(p.v).toFixed(1)).join(' ') + '" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="6 5"/><text x="' + (W - R - 4) + '" y="' + (Y(proj[proj.length - 1].v) - 10) + '" text-anchor="end" style="fill:var(--ink);font-weight:600">' + money(proj[proj.length - 1].v) + ' on ' + dayText(proj[proj.length - 1].t) + '</text>' : '';
+  const last = pts[pts.length - 1]; const lbl = '<text x="' + Math.min(X(last.t), W - R - 4) + '" y="' + (Y(last.v) - 10) + '" text-anchor="end" style="fill:var(--ink);font-weight:600">' + money(last.v) + '</text>';
+  return '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Net worth over time">' + g + '<path d="' + line + '" fill="none" stroke="var(--accent)" stroke-width="2" opacity=".55"/>' + dots + lbl + pl + '</svg>' +
+    '<div class="legend"><span><i style="background:var(--surface);border:2px solid var(--muted);border-radius:2px"></i>XIT FINCH equity (game data)</span>' + (proj ? '<span><i style="background:none;border:2px dashed var(--accent)"></i>Projection at the recent pace</span>' : '') + '<span><i style="background:var(--accent)"></i>Snapshot with cash entered</span></div>';
+}
+function tradeTable() {
+  const T = allTrades(); if (!T.length) return '<p class="sub">No trades logged yet.</p>';
+  const g = {}; T.forEach(t => { const k = t.tk + t.s; const o = g[k] || (g[k] = { tk: t.tk, s: t.s, n: 0, val: 0, ref: 0 }); o.n += t.n; o.val += t.n * t.p; o.ref += t.n * t.v7; });
+  const rows = Object.values(g).sort((a, b) => b.val - a.val); const sells = rows.filter(r => r.s === 'S').reduce((a, r) => a + r.val, 0), buys = rows.filter(r => r.s === 'B').reduce((a, r) => a + r.val, 0); const first = Math.min(...T.map(t => t.ts));
+  const body = rows.map(r => { const avg = r.val / r.n, prem = r.s === 'S' ? (r.val - r.ref) / r.ref : (r.ref - r.val) / r.ref;
+    return '<tr><td>' + (r.s === 'S' ? 'Sold ' : 'Bought ') + esc(r.tk) + '</td><td class="n">' + num(r.n) + '</td><td class="n">' + avg.toLocaleString('en-US', { maximumFractionDigits: avg < 100 ? 1 : 0 }) + '</td><td class="n">' + money(r.val) + '</td><td class="n ' + (prem >= 0 ? 'pos' : 'neg') + '">' + (prem >= 0 ? '+' : '−') + Math.abs(prem * 100).toFixed(1) + '%</td></tr>'; }).join('');
+  return '<p class="sub">Since ' + dayText(first) + ': sold ' + money(sells) + ', bought ' + money(buys) + '. The last column compares your price with the 7-day average at the time; positive is in your favour.</p><div class="tablewrap"><table><thead><tr><th>Trade</th><th>Units</th><th>Avg price</th><th>Value</th><th>vs 7-day avg</th></tr></thead><tbody>' + body + '</tbody></table></div>';
+}
+function loanBlock() {
+  const s = latestAny(); if (!s || !(s.loans || []).length) return '<p class="sub">No active loans in the latest snapshot.</p>';
+  const rows = s.loans.map(l => '<tr><td>' + esc(l.id) + '</td><td class="hide-s">' + esc(l.partner) + '</td><td class="n hide-s">' + money(l.principal) + '</td><td class="n">' + l.paid + ' of ' + l.n + '</td><td class="n">' + money(l.inst) + '</td><td class="n">' + money(l.pendingTotal) + '</td><td class="n">' + (l.nextDue ? dayText(l.nextDue) : '–') + '</td></tr>').join('');
+  const wk = {}, now = Date.now();
+  const mon0 = (() => { const p = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' }).formatToParts(new Date(now)), g = k => p.find(x => x.type === k).value; const wd = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].indexOf(g('weekday')); return Date.UTC(+g('year'), +g('month') - 1, +g('day') - wd) - tzOff() * HR; })();
+  s.loans.forEach(l => { const left = l.n - l.paid; for (let i = 0; i < left; i++) { const t = (l.nextDue || now) + i * 7 * DAY; const w = Math.max(0, Math.floor((t - mon0) / (7 * DAY))); wk[w] = (wk[w] || 0) + l.inst; } });
+  const inc = Math.max(1, planExpected()) * 7;
+  const wk0 = wk[0] || 0;
+  const wrows = Object.keys(wk).slice(0, 8).map(w => '<tr><td>' + (Number(w) === 0 ? 'This week' : 'Week ' + (Number(w) + 1)) + ' (Mon ' + dayText(mon0 + w * 7 * DAY + 12 * HR) + ')</td><td class="n">' + money(wk[w]) + '</td><td class="n">' + Math.round(wk[w] / inc * 100) + '%</td></tr>').join('');
+  return '<div class="tablewrap"><table><thead><tr><th>Loan</th><th class="hide-s">Lender</th><th class="hide-s">Principal</th><th>Paid</th><th>Installment</th><th>Left to pay</th><th>Next due</th></tr></thead><tbody>' + rows + '</tbody></table></div><details class="wkpay" data-open="wk"' + ((st.openB.wk != null ? st.openB.wk : window.innerWidth > 600) ? ' open' : '') + '><summary><b>Payments by week</b> <span class="muted">· this week (Mon–Sun) ' + money(wk0) + '</span></summary><div class="tablewrap"><table><thead><tr><th>Week</th><th>Due</th><th>Share of plan income</th></tr></thead><tbody>' + wrows + '</tbody></table></div></details><p class="sub">Plan income is ' + money(planExpected()) + ' a day (Bases library). Dates assume a weekly rhythm after the next due date.</p>';
+}
+function splitBlock(s) {
+  if (!s.split) return '<p class="sub">Log a new snapshot to see supplies and products separately.</p>';
+  const rows = []; const add = (n, v, note) => rows.push([n, v, note || '']);
+  s.bases.forEach(b => { if (!b.split) return; const age = s.t - new Date(b.upd).getTime(); add(b.p + ' (base stock)', b.split, age > 2 * HR ? 'FIO data ' + ageText(age) + ' old' : ''); });
+  (s.warehouses || []).forEach(w => add('Benten warehouse', w.split)); (s.ships || []).forEach(x => add(x.r + ' cargo', x.split));
+  const cxl = cxlValue(s), wip = (s.bases[0] && s.bases[0].lines) ? wipValue(s) : 0;
+  if (cxl) add('Listed on the CX', { S: 0, P: cxl, O: 0 });
+  const tot = { S: s.split.S, P: s.split.P + cxl, O: s.split.O }, sum = tot.S + tot.P + tot.O + wip || 1;
+  const bar2 = v => { const t = v.S + v.P + v.O || 1; return '<div class="split" title="supplies ' + money(v.S) + ', products ' + money(v.P) + '"><i class="sS" style="width:' + v.S / t * 100 + '%"></i><i class="sP" style="width:' + v.P / t * 100 + '%"></i><i class="sO" style="width:' + v.O / t * 100 + '%"></i></div>'; };
+  const stale = rows.filter(r => r[2]);
+  return '<div class="tiles"><div class="tile"><div class="k">Supplies</div><div class="v">' + money(tot.S) + '</div><div class="s">' + Math.round(tot.S / sum * 100) + '% · inputs and consumables</div></div>' +
+    '<div class="tile"><div class="k">Products for sale</div><div class="v">' + money(tot.P) + '</div><div class="s">' + Math.round(tot.P / sum * 100) + '% · incl. ' + money(cxl) + ' listed on the CX</div></div>' +
+    '<div class="tile"><div class="k">In production</div><div class="v">' + money(wip) + '</div><div class="s">' + Math.round(wip / sum * 100) + '% · running orders</div></div>' +
+    '<div class="tile"><div class="k">Other</div><div class="v">' + money(tot.O) + '</div><div class="s">construction and leftovers</div></div></div>' +
+    '<div class="tablewrap"><table><thead><tr><th>Where</th><th>Supplies</th><th>Products</th><th class="hide-s">Other</th><th style="min-width:100px">Mix</th></tr></thead><tbody>' + rows.map(([n, v, note]) => '<tr><td>' + esc(n) + (note ? ' <span class="warnc">· ' + esc(note) + '</span>' : '') + '</td><td class="n">' + money(v.S) + '</td><td class="n">' + money(v.P) + '</td><td class="n hide-s">' + money(v.O) + '</td><td>' + bar2(v) + '</td></tr>').join('') + '</tbody></table></div>' +
+    '<div class="legend"><span><i class="sS"></i>supplies</span><span><i class="sP"></i>products</span><span><i class="sO"></i>other</span></div>' +
+    (stale.length ? '<p class="sub warnc">Old FIO data can count goods twice: goods you loaded onto a ship since then are still shown at the base. Open the base in the game and take a new snapshot.</p>' : '') +
+    '<p class="sub">At a base, a material is a supply if the base uses more than it makes and a product if it makes more. In warehouses and on ships, a material counts by what any base does with it; materials that are both (like KOM) count as products on ships heading to Benten and as supplies elsewhere. In production is the value of running orders, as in XIT.</p>';
+}
+function finchPanel() {
+  const R = st.finch; if (!R.length) return '<div class="panel"><p class="sub" style="margin:0">No XIT export imported yet. Import it on the Log tab to see real cash and equity history from the game.</p></div>';
+  const l = R[R.length - 1];
+  return '<details class="panel" data-open="finch"' + (st.openB.finch ? ' open' : '') + '><summary><b>Balance sheet from XIT</b> <span class="muted">· equity ' + money(l.eq) + ' · cash ' + money(l.cash) + ' on ' + dayText(l.t) + '</span></summary>' + finchBlock() + '</details>';
+}
+function finchBlock() {
+  const R = st.finch; if (!R.length) return '<p class="sub">No XIT export imported yet. Import it on the Log tab.</p>';
+  const l = R[R.length - 1], ex = x => x == null ? 0 : x;
+  const items0 = [['Cash', l.cash], ['Deposits on the CX', l.dep], ['Listed on the CX', l.cxl], ['CX warehouse', l.cxi], ['Materials in transit', l.tr], ['Base: finished goods', l.fg], ['Base: work in progress', l.wip], ['Base: raw materials', l.raw], ['Base: worker consumables', l.wfc], ['Base: other', l.oth], ['Fuel', l.fuel], ['Buildings, after depreciation', l.bld], ['Receivables', l.lt], ['Liabilities', -l.liab]]; const items = items0.filter(x => Math.abs(x[1]) >= 1000);
+  const hist = R.slice(-9).map((r, i, a) => { const p = a[i - 1]; const g = p ? (r.eq - p.eq) / ((r.t - p.t) / DAY) : null; return '<tr><td>' + dayText(r.t) + '</td><td class="n">' + money(r.cash) + '</td><td class="n">' + money(r.eq) + '</td><td class="n ' + (g == null ? '' : g >= 0 ? 'pos' : 'neg') + '">' + (g == null ? '–' : (g >= 0 ? '+' : '−') + money(Math.abs(g)).replace('−', '')) + '</td></tr>'; }).join('');
+  return '<p class="sub">From your XIT export, recorded ' + fmtDT(l.t) + '. Same figures as XIT FINBS in partial mode (ships and HQ upgrades are not counted).</p>' +
+    '<div class="tablewrap"><table><tbody>' + items.map(([n, v]) => '<tr><td>' + n + '</td><td class="n ' + (v < 0 ? 'neg' : '') + '">' + money(v) + '</td></tr>').join('') + '<tr><td><b>Equity</b></td><td class="n"><b>' + money(l.eq) + '</b></td></tr></tbody></table></div>' +
+    '<h3 class="sm">Equity by day</h3><div class="tablewrap"><table><thead><tr><th>Day</th><th>Cash</th><th>Equity</th><th>Change / day</th></tr></thead><tbody>' + hist + '</tbody></table></div>';
+}
+function deriveFinch(json) {
+  const H = json && json.data && json.data.balanceHistory && json.data.balanceHistory.v2; if (!Array.isArray(H) || !H.length) return null;
+  const N = 'cash cx fx mm arC loansPC loansIC cxListed cxInv finished wip raw wfc other fuel transitC recvC infra resExt prod accDep shipsMV shipsDep arNC transitNC recvNC loansPNC hq arc apC matPayC debtsPC debtsIC apNC matPayNC debtsPNC'.split(' ');
+  return H.filter(r => r.length === 37).map(r => { const x = { t: r[0] }; N.forEach((k, i) => x[k] = r[i + 1] || 0);
+    const cur = x.cash + x.cx + x.fx + x.mm + x.arC + x.loansPC + x.loansIC + x.cxListed + x.cxInv + x.finished + x.wip + x.raw + x.wfc + x.other + x.fuel + x.transitC + x.recvC;
+    const bld = x.infra + x.resExt + x.prod - x.accDep, lt = x.arNC + x.transitNC + x.recvNC + x.loansPNC, liab = x.apC + x.matPayC + x.debtsPC + x.debtsIC + x.apNC + x.matPayNC + x.debtsPNC;
+    const R0 = Math.round; return { t: x.t, cash: R0(x.cash), dep: R0(x.cx + x.fx + x.mm), cxl: R0(x.cxListed), cxi: R0(x.cxInv), tr: R0(x.transitC + x.transitNC), fg: R0(x.finished), wip: R0(x.wip), raw: R0(x.raw), wfc: R0(x.wfc), oth: R0(x.other), fuel: R0(x.fuel), bld: R0(bld), lt: R0(lt + x.arC + x.arNC), liab: R0(liab), eq: R0(cur + bld + lt - liab), ships: R0(x.shipsMV - x.shipsDep), hq: R0(x.hq) }; });
+}
+function liveProfit(s) {
+  return s.bases.filter(b => b.net).map(b => {
+    let out = 0, inp = 0; const px = s.px;
+    for (const [t, n] of Object.entries(b.net)) { if (n > 0) out += n * pv7(px, t); else inp += -n * pv7(px, t); }
+    const rep = b.bldVal / 180; const plan = OPS.plans.find(p => p.pname === b.p && p.io); const pn = plan ? CALC[plan.id].net : null;
+    return { b, out, inp, rep, profit: out - inp - rep, plan: pn };
+  });
+}
+function flowTable(s) {
+  const f = {}; s.bases.filter(b => b.net).forEach(b => { for (const [t, n] of Object.entries(b.net)) { const o = f[t] || (f[t] = { t, p: 0, c: 0 }); if (n > 0) o.p += n; else o.c += -n; } });
+  const rows = Object.values(f).map(o => ({ ...o, net: o.p - o.c, val: (o.p - o.c) * pv7(s.px, o.t) })).sort((a, b) => Math.abs(b.val) - Math.abs(a.val)).slice(0, 14);
+  return '<div class="tablewrap"><table><thead><tr><th>Material</th><th>Made / day</th><th>Used / day</th><th>Net / day</th><th>Net value / day</th></tr></thead><tbody>' + rows.map(o => '<tr><td>' + esc(o.t) + '</td><td class="n">' + num(o.p) + '</td><td class="n">' + num(o.c) + '</td><td class="n ' + (o.net >= 0 ? 'pos' : 'neg') + '">' + (o.net >= 0 ? '+' : '−') + num(Math.abs(o.net)) + '</td><td class="n ' + (o.val >= 0 ? 'pos' : 'neg') + '">' + (o.val >= 0 ? '+' : '−') + money(Math.abs(o.val)).replace('−', '') + '</td></tr>').join('') + '</tbody></table></div><p class="sub">Net per material across all bases at the 7-day price. Materials made at one base and used at another cancel out, so what is left is what you sell or buy.</p>';
+}
+function viewMoney() {
+  const s = latest(), sa = latestAny(); const pts = series();
+  const pj = projectionBlock(pts);
+  let comp = '', ratios = '', fin = '';
+  if (sa) { const v = sa.val, w = worth(sa), adj = adjAt(sa.t), d = debt(sa), A = assets(sa) + (w.cash ? w.cash.v : 0) + adj;
+    comp = '<div class="tablewrap"><table><tbody><tr><td>Cash' + (w.cash && w.cash.est ? ' (estimate from last entry and logged trades)' : '') + '</td><td class="n">' + (w.cash ? money(w.cash.v) : 'not entered') + '</td></tr>' +
+      '<tr><td>Stock at bases</td><td class="n">' + money(v.stock) + '</td></tr><tr><td>Warehouses</td><td class="n">' + money(v.wh) + '</td></tr><tr><td>Cargo on ships</td><td class="n">' + money(v.ships) + '</td></tr><tr><td>Fuel</td><td class="n">' + money(v.fuel) + '</td></tr><tr><td>Goods listed on the CX</td><td class="n">' + money(cxlValue(sa)) + '</td></tr><tr><td>In production (running orders)</td><td class="n">' + money(sa.bases[0] && sa.bases[0].lines ? wipValue(sa) : 0) + '</td></tr><tr><td>Buildings (build cost × condition)</td><td class="n">' + money(v.build) + '</td></tr>' +
+      (adj ? '<tr><td>Other assets entered by hand</td><td class="n">' + money(adj) + '</td></tr>' : '') + '<tr><td>Loans left to pay</td><td class="n neg">−' + money(d) + '</td></tr><tr><td><b>Net worth</b></td><td class="n"><b>' + money(w.full != null ? w.full : w.ex) + '</b>' + (w.full == null ? ' excl. cash' : '') + '</td></tr></tbody></table></div><p class="sub">Ships themselves are not counted, like XIT FIN partial mode. Stock is valued at the CI1 7-day average.</p>';
+    const due7 = (sa.loans || []).reduce((a, l) => a + (l.nextDue && l.nextDue < Date.now() + 7 * DAY ? l.inst : 0), 0), pend = (sa.payments || []).reduce((a, p) => a + p.amt, 0);
+    ratios = '<div class="tiles"><div class="tile"><div class="k">Debt ratio</div><div class="v">' + (d / Math.max(1, A) * 100).toFixed(0) + '%</div><div class="s">loans ÷ total assets</div></div>' +
+      '<div class="tile"><div class="k">Quick ratio</div><div class="v">' + (w.cash && due7 + pend ? (w.cash.v / (due7 + pend)).toFixed(1) + '×' : '–') + '</div><div class="s">cash ÷ payments due in 7 days' + (pend ? ' and pending contracts' : '') + '</div></div>' +
+      '<div class="tile"><div class="k">Free cash</div><div class="v">' + (w.cash ? money(w.cash.v - due7 - pend) : '–') + '</div><div class="s">after payments due in 7 days' + (pend ? ' and pending contracts' : '') + '</div></div></div>';
+  }
+  if (s && s.bases.every(b => b.net)) {
+    const L = liveProfit(s), tot = L.reduce((a, x) => a + x.profit, 0);
+    fin = '<div class="tablewrap"><table><thead><tr><th>Base</th><th>Output / day</th><th class="hide-s">Inputs and workers / day</th><th class="hide-s">Repairs / day</th><th>Profit / day</th><th>Plan after repairs</th></tr></thead><tbody>' + L.map(x => '<tr><td>' + esc(x.b.p) + '</td><td class="n">' + money(x.out) + '</td><td class="n hide-s">−' + money(x.inp) + '</td><td class="n hide-s">−' + money(x.rep) + '</td><td class="n"><b>' + money(x.profit) + '</b></td><td class="n">' + (x.plan != null ? money(x.plan) + ' <span class="' + (x.profit >= x.plan ? 'pos' : 'neg') + '">' + (x.profit >= x.plan ? '+' : '−') + Math.abs(Math.round((x.profit / x.plan - 1) * 100)) + '%</span>' : '–') + '</td></tr>').join('') + '<tr><td><b>Total</b></td><td></td><td class="hide-s"></td><td class="hide-s"></td><td class="n"><b>' + money(tot) + '</b></td><td class="n">' + money(planExpected()) + '</td></tr></tbody></table></div><p class="sub">Like XIT FINPR: what each base makes minus what its running queue and workers use, at 7-day prices, minus repairs. It uses the real queue and efficiency from FIO, so it moves when you change a queue.</p>';
+  }
+  const adjList = st.adj.map(a => '<tr><td>' + esc(a.label) + '</td><td>' + dayText(a.t) + '</td><td class="n">' + money(a.amt) + '</td><td><button class="act plain" data-adjdel="' + a.t + '" aria-label="Remove ' + esc(a.label) + '">Remove</button></td></tr>').join('');
+  const adjBox = '<div class="row"><div class="field"><label class="sub" for="adjl">What</label><input id="adjl" placeholder="Ship upgrade kit 1"></div><div class="field"><label class="sub" for="adja">Amount (CIS, minus for a liability)</label><input type="number" id="adja" step="1000"></div><div class="field"><span class="sub">&nbsp;</span><button class="act plain" id="adjsave">Add</button></div></div>' + (adjList ? '<div class="tablewrap"><table><tbody>' + adjList + '</tbody></table></div>' : '') + '<p class="sub">Use this for things FIO does not show, for example a ship kit you paid for (add it when you pay). Entries count from the day you add them.</p>';
+  return '<div class="cols"><div><div class="panel"><h2>Net worth over time</h2>' + chartSvg(pts, pj.proj) + '</div><div class="panel"><h2>Income and projection</h2>' + pj.html + '</div></div>' +
+    '<div><div class="panel"><h2>What it is made of</h2>' + ratios + comp + '</div><div class="panel"><h2>Other assets</h2>' + adjBox + '</div></div></div>' +
+    '<div class="panel"><h2>Profit per base, live</h2>' + (fin || '<p class="sub">Log a new snapshot for this.</p>') + '</div>' +
+    '<div class="panel"><h2>Loans</h2>' + loanBlock() + '</div>' +
+    finchPanel() +
+    '<div class="panel"><h2>Supplies and products</h2>' + (sa ? splitBlock(sa) : '') + '</div>' +
+    '<div class="cols"><div class="panel"><h2>Materials across bases</h2>' + (s && s.bases.every(b => b.net) ? flowTable(s) : '<p class="sub">Log a new snapshot for this.</p>') + '</div><div class="panel"><h2>Sales and purchases</h2>' + tradeTable() + '</div></div>';
+}
+
+// ---------- BASES
+const MIX = { thr: 0.10, k: 2.0, cap: 0.25, minGain: 3000, minPct: 0.04, reps: [1, 2, 3, 4, 5, 6, 8, 10], maxHours: 96, maxRecipes: 3 };
+const recSig = r => Object.keys(r.o).sort().join(',') + '|' + Object.keys(r.i).sort().join(',');
+const queueSlots = () => (S().slots > 0 ? S().slots : 5);
+function recName(r, all) { const m = mainOut(r); const same = all.filter(x => mainOut(x) === m); return same.length > 1 ? m + ' ← ' + Object.keys(r.i).join('+') : m; }
+function mixModel(s, b, l, ctx) {
+  const bt = LT[l.ty]; if (!bt) return null;
+  const rec = recipesOf(s).filter(r => r.b === bt); if (!rec.length) return null;
+  const sigRec = {}; rec.forEach((r, j) => { sigRec[recSig(r)] = j; });
+  const grp = {}, curSh = rec.map(() => 0); let curTot = 0;
+  (l.orders || []).forEach(o => {
+    if (o.h) return; const j = sigRec[Object.keys(o.o || {}).sort().join(',') + '|' + Object.keys(o.i || {}).sort().join(',')]; if (j == null) return;
+    const r = rec[j], t0 = Object.keys(r.i)[0], n = Math.max(1, Math.round((o.i[t0] || r.i[t0]) / r.i[t0]));
+    const k = j + '|' + n; grp[k] = (grp[k] || 0) + 1; curSh[j] += n * r.h; curTot += n * r.h;
+  });
+  if (!curTot) return null;
+  const px = s.px, net = b.net || {}, K = queueSlots();
+  const ev = parts => {
+    let tot = 0; parts.forEach(z => { tot += z.c * z.n * rec[z.j].h; }); if (!tot) return null;
+    const u = {}, inp = {}; let costIn = 0, costFee = 0;
+    parts.forEach(z => { const r = rec[z.j], share = z.c * z.n * r.h / tot, runs = l.cap * 24 * l.eff * share / r.h;
+      for (const [t, n] of Object.entries(r.o)) u[t] = (u[t] || 0) + runs * n;
+      for (const [t, n] of Object.entries(r.i)) { inp[t] = (inp[t] || 0) + runs * n; costIn += runs * n * pask(px, t); }
+      costFee += runs * 5 * r.h; });
+    return { u, inp, costIn, costFee, cost: costIn + costFee, tot };
+  };
+  const curParts = []; rec.forEach((r, j) => { if (curSh[j]) curParts.push({ j, c: 1, n: curSh[j] / r.h }); });
+  const curE = ev(curParts); if (!curE) return null;
+  const others = {}; Object.keys(curE.u).forEach(t => { if (ctx) { others[t] = (ctx.P[t] || 0) - curE.u[t]; } else { let all = 0; (s.bases || []).forEach(x => { all += ((x.net || {})[t] || 0); }); others[t] = all - curE.u[t]; } });
+  const profitOf = e => { let rev = 0, gross = 0, inVal = 0; const shares = {}, drop = {}; for (const [t, n] of Object.entries(e.u)) { const V = px[t] && px[t][3], oth = others[t] != null ? others[t] : 0, Dt = ctx ? (ctx.D[t] || 0) : 0;
+      const internal = Math.max(0, Math.min(n, Dt - oth)), ext = n - internal, surplus = Math.max(0, oth + n - Dt);
+      const sh = V ? (ctx ? surplus : Math.max(0, oth + n)) / V : 0; shares[t] = sh; const d = MIX.k * Math.max(0, sh - MIX.thr); drop[t] = d;
+      inVal += internal * pask(px, t); gross += internal * pask(px, t) + ext * pv7(px, t); rev += internal * pask(px, t) + ext * pv7(px, t) * (1 - d); }
+    return { rev, gross, inVal, shares, drop, profit: rev - e.cost, costIn: e.costIn, costFee: e.costFee }; };
+  const single = rec.map((r, j) => ({ j, p: profitOf(ev([{ j, c: 1, n: 1 }])).profit })).sort((x, y) => y.p - x.p);
+  const set = []; Object.keys(curSh).forEach(j => { if (curSh[j] && set.length < MIX.maxRecipes) set.push(+j); }); single.forEach(x => { if (set.length < MIX.maxRecipes && !set.includes(x.j)) set.push(x.j); });
+  const curP = profitOf(curE), capSh = Math.max(MIX.cap, ...Object.values(curP.shares)), best = [];
+  const need = {}; if (ctx) Object.keys(curE.u).forEach(t => { const Dt = ctx.D[t] || 0; if (Dt > 0 && others[t] + curE.u[t] >= 0.9 * Dt) need[t] = 0.95 * Dt - others[t]; });
+  const covers = e => Object.keys(need).every(t => (e.u[t] || 0) >= need[t] - 1e-9);
+  const nOk = (j, n) => n * rec[j].h / l.eff <= MIX.maxHours || n === 1;
+  const gen = (i, used, parts) => {
+    if (i === set.length) { if (parts.length) { const e = ev(parts); if (e && covers(e)) { const p = profitOf(e); if (Math.max(0, ...Object.values(p.shares)) <= capSh + 1e-9) best.push({ parts: parts.map(z => Object.assign({}, z)), e, p, slots: used }); } } return; }
+    gen(i + 1, used, parts);
+    const j = set[i];
+    for (let c = 1; c <= K - used; c++) for (const n of MIX.reps) { if (!nOk(j, n)) continue; parts.push({ j, c, n }); gen(i + 1, used + c, parts); parts.pop(); }
+  };
+  gen(0, 0, []);
+  best.sort((x, y) => (y.p.profit - x.p.profit) || (x.slots - y.slots));
+  const label = parts => { const tot = parts.reduce((a, z) => a + z.c * z.n * rec[z.j].h, 0); return parts.map(z => ({ r: rec[z.j], lab: recName(rec[z.j], rec), c: z.c, n: z.n, share: z.c * z.n * rec[z.j].h / tot })); };
+  const seen = new Set(), top = [];
+  for (const x of best) { const sig = label(x.parts).map(z => z.r.n + Math.round(z.share * 50)).sort().join('|'); if (seen.has(sig)) continue; seen.add(sig); top.push(x); if (top.length >= 4) break; }
+  const curLabel = Object.entries(grp).map(([k, c]) => { const [j, n] = k.split('|').map(Number); return { r: rec[j], lab: recName(rec[j], rec), c, n, share: c * n * rec[j].h / curTot }; });
+  const curShares = (function () { const tot = curTot; return rec.map((r, j) => curSh[j] ? { r, lab: recName(r, rec), c: 0, n: 0, share: curSh[j] / tot } : null).filter(Boolean); })();
+  const newIn = parts => { const o = new Set(); parts.forEach(z => Object.keys(rec[z.j].i).forEach(t => { const used = ((b.net || {})[t] != null) || ((b.inv || {})[t] > 0) || ((b.wf || {})[t] != null); if (!used) o.add(t); })); return [...o]; };
+  const topOut = top.filter(x => x.p.profit > curP.profit + Math.max(500, 0.01 * Math.abs(curP.profit)) && (!newIn(x.parts).length || x.p.profit > curP.profit + Math.max(2 * MIX.minGain, 0.08 * Math.abs(curP.profit)))).slice(0, 3).map(x => ({ e: x.e, p: x.p, parts: label(x.parts), newIn: newIn(x.parts), gain: x.p.profit - curP.profit, slots: x.slots }));
+  return { b, l, bt, K, ownUse: curP.gross > 0 ? curP.inVal / curP.gross : 0, curU: curE.u, cur: { e: curE, p: curP, parts: curLabel, shares: curShares }, top: topOut, worth: topOut.length && topOut[0].gain >= Math.max(MIX.minGain, MIX.minPct * Math.abs(curP.profit)) };
+}
+function mixAll(s) { if (s._mix) return s._mix;
+  const first = []; (s.bases || []).forEach(b => (b.lines || []).forEach(l => { const m = mixModel(s, b, l, null); if (m) first.push(m); }));
+  const P = {}, prodB = {}; first.forEach(m => { prodB[m.b.p] = prodB[m.b.p] || {}; for (const [t, n] of Object.entries(m.curU)) { P[t] = (P[t] || 0) + n; prodB[m.b.p][t] = (prodB[m.b.p][t] || 0) + n; } });
+  const D = {}; (s.bases || []).forEach(b => { const pb = prodB[b.p] || {}; const ts = new Set(Object.keys(pb).concat(Object.keys(b.net || {}))); ts.forEach(t => { const c = (pb[t] || 0) - ((b.net || {})[t] || 0); if (c > 0) D[t] = (D[t] || 0) + c; }); });
+  const out = []; (s.bases || []).forEach(b => (b.lines || []).forEach(l => { const m = mixModel(s, b, l, { P, D }); if (m) out.push(m); })); s._mix = out; return out; }
+function slotsHtml(parts, K, grouped) {
+  const chips = []; let n = 0;
+  parts.forEach(z => { if (grouped) { chips.push('<span class="slot">' + z.n + '× ' + esc(z.lab || mainOut(z.r)) + (z.c > 1 ? ' <i>×' + z.c + '</i>' : '') + '</span>'); n += z.c; } else for (let i = 0; i < z.c; i++) { chips.push('<span class="slot">' + z.n + '× ' + esc(z.lab || mainOut(z.r)) + '</span>'); n++; } });
+  if (!grouped) while (n++ < K) chips.push('<span class="slot empty">empty</span>');
+  return '<div class="slots" aria-label="Queue slots">' + chips.join('') + '</div>';
+}
+function mixText(parts) { return parts.map(z => (z.c > 1 ? z.c + ' × ' : '') + z.n + '× ' + (z.lab || mainOut(z.r))).join(', '); }
+function mainOut(r) { return Object.entries(r.o).sort((x, y) => y[1] - x[1])[0][0]; }
+function mixHtml(s) {
+  if (!recipesOf(s).length) return '<p class="sub">Log a snapshot that includes recipes for this.</p>';
+  const M = mixAll(s); if (!M.length) return '<p class="sub">No production lines found.</p>';
+  const byBase = {}; M.forEach(m => (byBase[m.b.p] = byBase[m.b.p] || []).push(m));
+  const K = queueSlots();
+  const row = (lab, e, p, parts, gain, grouped, split, base, newIn) => '<tr><td><b>' + lab + '</b>' + slotsHtml(parts, K, grouped) + (newIn && newIn.length ? '<div class="warnc sub">Needs ' + newIn.map(esc).join(', ') + ' shipped in: this base gets none today</div>' : '') + '</td><td class="n">' + split.map(z => Math.round(z.share * 100) + '% ' + esc(z.lab || mainOut(z.r))).join('<br>') + '</td><td class="n"><b>' + money(p.profit) + '</b><div class="sub">sales ' + money(p.gross) + (p.inVal > 1 ? ' (own use ' + money(p.inVal) + ')' : '') + (p.gross - p.rev > 1 ? '<br>market share price drop −' + money(p.gross - p.rev) : '') + '<br>inputs −' + money(p.costIn) + '<br>fees −' + money(p.costFee) + '</div>' + (gain != null ? '<div class="' + (gain >= 0 ? 'pos' : 'neg') + '">' + (gain >= 0 ? '+' : '−') + money(Math.abs(gain)) + '</div>' : '') + '</td><td class="n hide-s">' + Object.entries(p.shares).filter(([t]) => e.u[t] > 0).sort((a, c) => c[1] - a[1]).slice(0, 3).map(([t, v]) => { const b0 = base && base[t] != null ? base[t] : null; return '<span class="' + (v > MIX.thr ? 'warnc' : '') + '">' + esc(t) + ' ' + (b0 != null && Math.abs(b0 - v) > 0.0005 ? (b0 * 100).toFixed(1) + '% → ' : '') + (v * 100).toFixed(1) + '%' + (p.drop[t] > 0.0005 ? ' (price −' + (p.drop[t] * 100).toFixed(0) + '%)' : '') + '</span>'; }).join('<br>') + '</td></tr>';
+  const ctl = '<div class="row" style="margin:8px 0"><label class="sub" for="slots">Repeating queue slots per line (grows with HQ upgrades)</label><input type="number" class="sm" id="slots" min="1" max="20" value="' + K + '"></div>';
+  return ctl + Object.entries(byBase).map(([p, L]) => '<details data-open="mx' + esc(p) + '"' + (st.openB['mx' + p] ? ' open' : '') + '><summary><b>' + esc(p) + '</b> ' + (L.some(m => m.worth) ? '<span class="warnc">· a different mix would earn more</span>' : '<span class="muted">· current mixes look right</span>') + '</summary>' + L.map(m =>
+    '<h3 class="sm">' + esc(m.bt) + ' × ' + m.l.cap + ' at ' + Math.round(m.l.eff * 100) + '% efficiency</h3>' + (m.ownUse >= 0.5 ? '<p class="sub">Mostly feeds your own bases (' + Math.round(m.ownUse * 100) + '% of this line\'s output value): what your other lines use is valued at the price you would pay to buy it, only the surplus is sold at market. Options keep covering your own demand for these products (at least 95%), because the alternative is buying them in.</p>' : '') +
+      '<div class="tablewrap"><table><thead><tr><th>Queue slots (repeats × product)</th><th>Time split</th><th>Profit / day, line</th><th class="hide-s">Market share of 7-day volume</th></tr></thead><tbody>' +
+      row('Now (as FIO lists the queue)', m.cur.e, m.cur.p, m.cur.parts, null, true, m.cur.shares) +
+      (m.top.map((x, i) => row('Option ' + (i + 1), x.e, x.p, x.parts, x.gain, false, x.parts, m.cur.p.shares, x.newIn)).join('') || '<tr><td colspan="4" class="muted">No better mix found with ' + K + ' slots.</td></tr>') + '</tbody></table></div>').join('') + '</details>').join('');
+}
+
+function advisor(s, b) {
+  const out = [];
+  (b.lines || []).forEach(l => {
+    const bt = LT[l.ty]; if (!bt) return; const rec = recipesOf(s).filter(r => r.b === bt); if (!rec.length) return;
+    const curSets = (l.orders || []).map(o => Object.keys(o.o || {}).sort().join(','));
+    const rows = rec.map(r => {
+      const opd = 24 * l.eff / r.h, rev = Object.entries(r.o).reduce((a, [t, n]) => a + n * pv7(s.px, t), 0), revB = Object.entries(r.o).reduce((a, [t, n]) => a + n * pbid(s.px, t), 0);
+      const cost = Object.entries(r.i).reduce((a, [t, n]) => a + n * pask(s.px, t), 0), fee = 5 * r.h; const main = Object.entries(r.o).sort((x, y) => y[1] * pv7(s.px, y[0]) - x[1] * pv7(s.px, x[0]))[0];
+      const units = main ? main[1] * opd : 0, tr = main && s.px[main[0]] ? s.px[main[0]][3] : null;
+      return { r, main: main ? main[0] : '?', perDay: (rev - cost - fee) * opd, perDayBid: (revB - cost - fee) * opd, share: tr ? units / tr * 100 : null, shareAll: tr ? units * l.cap / tr * 100 : null, cur: curSets.includes(Object.keys(r.o).sort().join(',')) };
+    }).filter(x => x.perDay > -1e9).sort((x, y) => y.perDay - x.perDay);
+    out.push({ l, bt, rows });
+  });
+  return out;
+}
+const FOUNDED = { Katoa: '2026-10-07T15:21:00Z', Umbra: '2026-10-20T14:49:00Z', Milliways: '2026-10-26T21:55:00Z', Nemesis: '2026-10-29T15:58:00Z' };
+const ROI = { delayD: 0, share: 0.9 };
+const foundedOf = b => b.founded ? new Date(b.founded).getTime() : (FOUNDED[b.p] ? new Date(FOUNDED[b.p]).getTime() : null);
+function bomOf(pl) { const all = Object.assign({}, pl.blds, { CM: 1 }), out = {}; for (const [b, n] of Object.entries(all)) for (const m of OPS.bld[b].c.split(' ')) { const [t, q] = m.split(':'); out[t] = (out[t] || 0) + q * n; } let area = 25; for (const [b, n] of Object.entries(pl.blds)) area += OPS.bld[b].a * n; out.MCG = (out.MCG || 0) + 4 * area; for (const [t, q] of Object.entries(pl.extra || {})) out[t] = (out[t] || 0) + q; return out; }
+function bookBefore(t) { const L = st.snaps.filter(x => x.book && Object.keys(x.book).length); if (!L.length) return null; if (t == null) return L[0]; const b = L.filter(x => x.t <= t + DAY); return b.length ? b[0] : null; }
+function costFrom(pl, snap) {
+  let ask = 0, depth = 0, partial = false;
+  for (const [t, q] of Object.entries(bomOf(pl))) {
+    const a = (snap.px && snap.px[t] && snap.px[t][0]) || ask_(t) || 0; ask += q * a;
+    const lad = snap.book && snap.book[t]; if (!lad || !lad.length) { depth += q * a; continue; }
+    let rem = q, c = 0; for (const [p, n] of lad) { const k = Math.min(rem, n); c += k * p; rem -= k; if (rem <= 0) break; }
+    if (rem > 0) { c += rem * lad[lad.length - 1][0] * 1.15; partial = true; } depth += c;
+  }
+  return { ask, depth, partial, t: snap.t };
+}
+function roiOf(b, profit, plan, cost) {
+  const f = b.founded ? new Date(b.founded).getTime() : (FOUNDED[b.p] ? new Date(FOUNDED[b.p]).getTime() : null);
+  if (!f || !(cost > 0)) return null;
+  const now = Date.now(), startT = f + ROI.delayD * DAY, cap = v => Math.max(0, plan != null ? Math.min(v, plan) : v);
+  const h = profitHist(b.p).filter(p => p.t > startT);
+  const pts = h.length ? h : [{ t: startT, v: profit }];
+  let paid = 0, t = startT, v = cap(pts[0].v);
+  pts.forEach(p => { if (p.t > t) { paid += (Math.min(p.t, now) - t) / DAY * v * ROI.share; t = Math.min(p.t, now); } v = cap(p.v); });
+  if (now > t) paid += (now - t) / DAY * cap(profit) * ROI.share;
+  paid = Math.max(0, paid); const days = Math.max(0, (now - startT) / DAY), basis = cap(profit), pct = paid / cost * 100;
+  const left = basis > 0 ? Math.max(0, cost - paid) / (basis * ROI.share) : null;
+  return { f, startT, days, basis, paid, pct, left, cost, fromSnaps: h.length };
+}
+function profitHist(p) {
+  return st.snaps.filter(x => x.v >= 2 && x.bases && x.bases.every(b => b.net)).map(x => { const e = liveProfit(x).find(y => y.b.p === p); return e ? { t: x.t, v: e.profit } : null; }).filter(Boolean).sort((u, v) => u.t - v.t);
+}
+function spark(h) {
+  if (h.length < 2) return '<span class="muted">needs 2+ snapshots</span>';
+  const w = 120, hh = 30, xs = h.map(p => p.t), ys = h.map(p => p.v), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys), dy = (y1 - y0) || 1;
+  const pts = h.map(p => ((p.t - x0) / ((x1 - x0) || 1) * (w - 4) + 2).toFixed(1) + ',' + (hh - 3 - (p.v - y0) / dy * (hh - 6)).toFixed(1)).join(' ');
+  const ch = ys[ys.length - 1] - ys[0];
+  return '<svg width="' + w + '" height="' + hh + '" viewBox="0 0 ' + w + ' ' + hh + '" role="img" aria-label="Profit per day over ' + h.length + ' snapshots, ' + (ch >= 0 ? 'up' : 'down') + ' ' + money(Math.abs(ch)) + '"><polyline points="' + pts + '" fill="none" stroke="' + (ch >= 0 ? 'var(--good)' : 'var(--crit)') + '" stroke-width="2"/></svg><span class="sub">' + (ch >= 0 ? '+' : '−') + money(Math.abs(ch)) + ' since ' + dayText(x0) + '</span>';
+}
+function baseInfo(s, x) {
+  const b = x.b, t0 = new Date(b.upd).getTime(), warns = [];
+  const lines = (b.lines || []).map(l => { const run = (l.orders || []).filter(o => o.s && !o.h && o.e > t0).length, queued = (l.orders || []).filter(o => !o.s).length; return { l, run, queued, idle: Math.max(0, l.cap - run) }; });
+  const idle = lines.reduce((a, z) => a + z.idle, 0), cap = lines.reduce((a, z) => a + z.l.cap, 0);
+  const items = Object.entries(b.net || {}).map(([t, n]) => ({ t, n, v: Math.abs(n) * pv7(s.px, t), prod: n > 0 }));
+  const expo = items.filter(i => i.v > 0).map(i => ({ t: i.t, prod: i.prod, pct: x.profit > 0 ? x.profit / i.v * 100 : 0 })).filter(e => !(e.prod && e.pct >= 100)).sort((u, v) => u.pct - v.pct).slice(0, 3);
+  const sat = items.filter(i => i.prod).map(i => { const tr = s.px[i.t] && s.px[i.t][3]; return { t: i.t, share: tr ? i.n / tr * 100 : null }; }).filter(i => i.share != null).sort((u, v) => v.share - u.share);
+  const plan = OPS.plans.find(p => p.pname === b.p && p.io); let cost = plan ? CALC[plan.id].cost : b.bldVal, costSrc = plan ? 'plan' : 'buildings'; const after = x.profit;
+  const sbk = plan ? bookBefore(foundedOf(b)) : null; if (sbk) { cost = costFrom(plan, sbk).depth; costSrc = 'CX orders ' + dayText(sbk.t); }
+  const cog = plan ? daysTo(plan.cogcEnd) : null, ro = b.inv ? runouts(b, Date.now()).rows[0] : null, roH = ro && ro.ro !== Infinity ? (ro.ro - Date.now()) / HR : null;
+  if (idle > 0) warns.push(['crit', idle + ' of ' + cap + ' buildings are not running an order, so that capacity earns nothing right now']);
+  if (roH != null && roH < 24) warns.push(['crit', ro.t + ' runs short ' + fmtDT(ro.ro)]); else if (roH != null && roH < 60) warns.push(['warn', ro.t + ' runs short ' + fmtDT(ro.ro)]);
+  if (sat[0] && sat[0].share > 15) warns.push(['warn', sat[0].t + ' is ' + sat[0].share.toFixed(1) + '% of the 7-day market, selling more will push the price down']);
+  if (expo[0] && expo[0].pct < 8) warns.push(['warn', 'Thin margin: if ' + expo[0].t + (expo[0].prod ? ' sells ' : ' costs ') + expo[0].pct.toFixed(0) + '% ' + (expo[0].prod ? 'less' : 'more') + ', this base makes no profit']);
+  if (x.plan != null && x.profit < x.plan * 0.85) warns.push(['warn', 'Profit is ' + Math.round((1 - x.profit / x.plan) * 100) + '% below the plan at current prices']);
+  if (cog != null && cog <= 7) warns.push(['warn', 'COGC program ends in ' + cog + ' days']);
+  if (b.oldestRepairD > 45 || b.minCond < 0.9) warns.push(['warn', 'Maintenance: condition ' + (b.minCond * 100).toFixed(1) + '%, oldest repair ' + b.oldestRepairD + ' days ago']);
+  mixAll(s).filter(m => m.b.p === b.p && m.worth).forEach(m => warns.push(['warn', 'Queue mix: the ' + m.bt + ' line would earn about ' + money(m.top[0].gain) + ' more per day with ' + mixText(m.top[0].parts) + (m.top[0].newIn.length ? ' (needs ' + m.top[0].newIn.join(', ') + ' shipped in)' : '')]));
+  const age = Date.now() - t0; if (age > 6 * HR) warns.push(['warn', 'Base data is ' + ageText(age) + ' old, open the base in the game and take a new snapshot']);
+  const roi = roiOf(b, x.profit, x.plan, cost);
+  return { b, roi, costSrc, lines, idle, cap, expo, sat, cost, payback: after > 0 ? cost / after : null, cog, warns, roH };
+}
+function baseCards(s) {
+  const L = liveProfit(s), I = L.map(x => ({ x, i: baseInfo(s, x) }));
+  const tot = L.reduce((a, x) => a + x.profit, 0), totPlan = L.reduce((a, x) => a + (x.plan || 0), 0), idle = I.reduce((a, z) => a + z.i.idle, 0), cap = I.reduce((a, z) => a + z.i.cap, 0);
+  const head = '<div class="tiles"><div class="tile"><div class="k">Profit per day, live</div><div class="v">' + money(tot) + '</div><div class="s">after repairs, real queues and efficiency</div></div>' +
+    '<div class="tile"><div class="k">Plan, same bases</div><div class="v">' + money(totPlan) + '</div><div class="s ' + (tot >= totPlan ? 'pos' : 'neg') + '">' + (totPlan ? (tot >= totPlan ? '+' : '−') + Math.abs(Math.round((tot / totPlan - 1) * 100)) + '% vs plan' : '') + '</div></div>' +
+    '<div class="tile"><div class="k">Buildings running</div><div class="v">' + (cap - idle) + ' of ' + cap + '</div><div class="s ' + (idle ? 'neg' : '') + '">' + (idle ? idle + ' idle' : 'no idle capacity') + '</div></div>' +
+    '<div class="tile"><div class="k">Needs attention</div><div class="v">' + I.reduce((a, z) => a + z.i.warns.length, 0) + '</div><div class="s">across ' + I.length + ' bases</div></div></div>';
+  const cards = I.sort((u, v) => v.x.profit - u.x.profit).map(({ x, i }) => {
+    const b = x.b, worst = i.warns.some(w => w[0] === 'crit') ? 'crit' : i.warns.length ? 'warn' : 'good', effs = b.lines.map(l => l.eff);
+    const lineRows = i.lines.map(z => '<div class="rw"><span>' + esc(LT[z.l.ty] || z.l.ty) + ' × ' + z.l.cap + ' · ' + Math.round(z.l.eff * 100) + '%</span><span class="n ' + (z.idle ? 'neg' : '') + '">' + z.run + ' running' + (z.idle ? ', ' + z.idle + ' idle' : '') + (z.queued ? ', ' + z.queued + ' queued' : '') + '</span></div>').join('');
+    const expo = i.expo.map(e => '<div class="rw"><span>' + (e.prod ? esc(e.t) + ' sells for less' : esc(e.t) + ' costs more') + '</span><span class="n">' + (e.prod ? '−' : '+') + e.pct.toFixed(0) + '% = zero profit</span></div>').join('');
+    const sat = i.sat.slice(0, 3).map(z => '<div class="rw"><span>' + esc(z.t) + ' market share</span><span class="n ' + (z.share > 15 ? 'neg' : '') + '">' + z.share.toFixed(1) + '% of 7-day volume</span></div>').join('');
+    const rp = i.roi ? Math.min(100, Math.max(0, i.roi.pct)) : 0, rc = !i.roi ? 'var(--line)' : i.roi.pct >= 100 ? 'var(--good)' : i.roi.pct >= 60 ? '#8fbf4a' : i.roi.pct >= 30 ? 'var(--warn)' : 'var(--crit)';
+    return '<article class="bcard"><div class="roi" role="img" aria-label="' + (i.roi ? 'Estimated ' + Math.round(i.roi.pct) + ' percent of the build cost earned back' : 'No founding date') + '" title="' + (i.roi ? 'Estimated ' + Math.round(i.roi.pct) + '% paid back' : '') + '"><i style="height:' + rp + '%;background:' + rc + '"></i></div><header><div><h3><span class="dot ' + worst + '" title="' + (worst === 'good' ? 'Nothing needs attention' : worst === 'crit' ? 'Needs attention now' : 'Worth a look') + '"></span>' + esc(b.p) + '</h3><p class="sub">' + b.nB + ' buildings · efficiency ' + (Math.round(Math.min(...effs) * 100) === Math.round(Math.max(...effs) * 100) ? Math.round(Math.min(...effs) * 100) : Math.round(Math.min(...effs) * 100) + '–' + Math.round(Math.max(...effs) * 100)) + '% · ' + (b.avgCond * 100).toFixed(1) + '% condition</p></div>' +
+      '<div class="big"><b>' + money(x.profit) + '</b><span class="sub">per day, after repairs</span></div></header>' +
+      '<div class="kv"><div><span>Plan</span><b>' + (x.plan != null ? money(x.plan) : '–') + '</b>' + (x.plan != null ? '<span class="' + (x.profit >= x.plan ? 'pos' : 'neg') + '">' + (x.profit >= x.plan ? '+' : '−') + Math.abs(Math.round((x.profit / x.plan - 1) * 100)) + '%</span>' : '') + '</div>' +
+      '<div><span>' + (!i.roi ? 'Payback' : i.roi.pct >= 100 ? 'Paid back' : 'Days until paid back') + '</span><b>' + (!i.roi ? '–' : i.roi.pct >= 100 ? (i.roi.paid / i.cost).toFixed(1) + '× over' : (i.roi.left != null ? '~' + Math.round(i.roi.left) + ' days' : '–')) + '</b><span>' + (!i.roi ? 'no founding date' : i.roi.pct >= 100 ? 'profit after cost ≈ ' + money(i.roi.paid - i.cost) : Math.round(i.roi.pct) + '% paid back · ≈ ' + money(i.roi.paid) + ' of ' + money(i.cost)) + '</span></div>' +
+      '<div><span>Output · inputs per day</span><b>' + money(x.out) + '</b><span>inputs ' + money(x.inp) + '</span></div></div>' +
+      '<div class="spk">' + spark(profitHist(b.p)) + '</div>' +
+      '<div class="flags">' + (i.warns.length ? i.warns.map(w => '<div class="flag ' + w[0] + '">' + esc(w[1]) + '</div>').join('') : '<div class="flag good">Nothing needs attention</div>') + '</div>' +
+      '<details data-open="bc' + esc(b.p) + '"' + (st.openB['bc' + b.p] ? ' open' : '') + '><summary>Details</summary><h3 class="sm">Production lines</h3>' + lineRows + '<h3 class="sm">Most exposed to prices</h3><p class="sub">How far one price can move against you, everything else equal, before the base\'s daily profit reaches zero. A small number means a thin margin.</p>' + (expo || '<p class="sub">No profit to measure against.</p>') + '<h3 class="sm">Market saturation</h3>' + (sat || '<p class="sub">No market volume data.</p>') + '<h3 class="sm">Upkeep</h3><div class="rw"><span>Oldest repair</span><span class="n">' + b.oldestRepairD + ' days ago</span></div><div class="rw"><span>Weakest building</span><span class="n">' + (b.minCond * 100).toFixed(1) + '%</span></div>' + (i.cog != null ? '<div class="rw"><span>COGC program ends</span><span class="n">in ' + i.cog + ' days</span></div>' : '') + '</details></article>';
+  }).join('');
+  return head + '<div class="grid">' + cards + '</div><p class="sub" style="margin-top:8px">Profit is live: your real queues and efficiency at CI1 7-day prices, minus repairs (build cost ÷ 180 per day). Idle counts and queues are as of each base\'s last FIO sync.</p>';
+}
+function viewBases() {
+  const s = latest(); const chips = [['all', 'All'], ['built', 'Built'], ['open', 'Approved and candidates'], ['dropped', 'Dropped']].map(([k, l]) => '<button class="chip" data-f="' + k + '" aria-pressed="' + (k === st.filter) + '">' + l + '</button>').join('');
+  const sorts = [['profit', 'Profit per day'], ['payback', 'Payback'], ['cost', 'Build cost'], ['name', 'Name']].map(([k, l]) => '<option value="' + k + '"' + (k === st.sortBy ? ' selected' : '') + '>' + l + '</option>').join('');
+  let live = '<p class="sub">Log a new snapshot to see the live view.</p>', adv = '';
+  if (s && s.bases.every(b => b.net)) {
+    const L = liveProfit(s);
+    live = baseCards(s);
+    adv = mixHtml(s);
+  }
+  return '<h2 style="margin:0 0 10px">Your bases</h2>' + live +
+    '<details class="panel" data-open="recipes" style="margin-top:14px"' + (st.openB.recipes ? ' open' : '') + '><summary><b>Queue mix</b> <span class="muted">· ' + (s ? (mixAll(s).filter(m => m.worth).length ? mixAll(s).filter(m => m.worth).length + ' line(s) could earn more' : 'current mixes look right') : 'needs a snapshot') + '</span></summary><p class="sub">For each production line: your current queue against the best alternatives that fit in the repeating-queue slots you have. The repeating queue cycles through its slots; with more buildings than slots it goes round again from the top. Each box is one slot (one order and its repeat count), so ratios are set by repeat counts and slot counts. Sales are valued at the CI1 7-day average price, inputs at today\'s ask, fee 5 per base hour; the profit column shows all three. Market share counts everything your bases make of a product against its CI1 7-day volume. Above ' + Math.round(MIX.thr * 100) + '% the estimate lowers the price by ' + MIX.k + '% for every 1% of extra share (shown as the price drop), and options above ' + Math.round(MIX.cap * 100) + '% share are left out. Repeat counts up to 10 per slot, orders of at most 96 hours. Changing a queue only pays after the running orders finish.</p>' + (adv || '<p class="sub">Log a new snapshot for this.</p>') + '</details>' +
+    kitPanel(s) +
+    '<details class="panel" data-open="library"' + (st.openB.library ? ' open' : '') + '><summary><b>Plan library</b> <span class="muted">· ' + OPS.plans.length + ' PRUNplanner plans, candidates and approved bases</span></summary><p class="asof">Plans from PRUNplanner, empire Vivaldi II. Material I/O as of ' + OPS.ioAsof + '; prices are CI1 7-day averages, ' + OPS.asof + '.</p>' +
+    '<div class="bar"><div class="chips" id="fchips" role="group" aria-label="Filter by status">' + chips + '</div><span class="sp"></span><label for="sort" class="sub">Sort</label><select id="sort">' + sorts + '</select></div><div class="grid">' + visibleBases().map(card).join('') + '</div>' +
+    '<div class="foot"><p>Plan output is production minus consumption at CI1 7-day prices, before production fees. Repairs are one 180th of the build cost per day. Build cost excludes planet extras. Candidates outside the PRUNplanner empire show recorded figures with their source.</p></div></details>';
+}
+function liveStrip(pl) {
+  const s = latestAny(); if (!s) return ''; const b = s.bases.find(x => x.p === pl.pname); if (!b) return '';
+  const ro = b.inv ? runouts(b, Date.now()).rows[0] : null;
+  return '<div class="live"><span class="t">Live, ' + ageText(Date.now() - new Date(b.upd).getTime()) + ' old</span><span>Stock ' + money(b.stockVal) + (b.split ? ' (supplies ' + money(b.split.S) + ', products ' + money(b.split.P) + ')' : '') + '</span><span>Buildings ' + money(b.bldVal) + ' at ' + (b.avgCond * 100).toFixed(1) + '%</span>' + (ro ? '<span>First short: ' + esc(ro.t) + ' ' + fmtDT(ro.ro) + '</span>' : '') + '</div>';
+}
+function flagsFor(pl, c) {
+  const f = []; const n = daysTo(pl.cogcEnd);
+  f.push({ k: n <= 7 ? 'warn' : 'good', t: pl.cogc.charAt(0) + pl.cogc.slice(1).toLowerCase() + ' COGC program ends ' + shortDate(pl.cogcEnd) + ' (' + n + ' d)' });
+  const e = pl.env, x = [];
+  if (e.pr < 0.25) x.push('low pressure'); if (e.pr > 2) x.push('high pressure'); if (e.tmp < -25) x.push('low temperature'); if (e.tmp > 75) x.push('high temperature'); if (e.grav < 0.25) x.push('low gravity'); if (e.grav > 2.5) x.push('high gravity');
+  if (x.length) f.push({ k: 'warn', t: 'Planet extras needed (' + x.join(', ') + '), not in the build cost' });
+  const parts = []; let worst = 'good';
+  WT.forEach((w, i) => { const need = c.needs[i]; if (!need) return; const free = pl.free[i]; const ratio = need / Math.max(free, 1);
+    const k = pl.status === 'built' ? 'good' : (free < need ? 'crit' : ratio > 0.5 ? 'warn' : 'good'); if (k === 'crit') worst = 'crit'; else if (k === 'warn' && worst !== 'crit') worst = 'warn';
+    parts.push(w + ' ' + num(need) + (pl.status === 'built' ? '' : ' of ' + num(free) + ' free')); });
+  if (pl.status === 'built') f.push({ k: 'good', t: 'Staffed: ' + parts.join(', ') }); else f.push({ k: worst, t: 'Workers needed ' + (worst === 'crit' ? 'exceed' : 'vs') + ' free: ' + parts.join(', ') });
+  return f;
+}
+function depthText(pl) { const sb = bookBefore(null); if (!sb) return ''; const c = costFrom(pl, sb); return ' · buying from CX orders ' + money(c.depth) + (c.partial ? '+' : ''); }
+function card(pl) {
+  const c = CALC[pl.id], s = cur(pl.id), sx = STATUS[s.status] || STATUS.candidate;
+  const opts = Object.entries(STATUS).map(([k, v]) => '<option value="' + k + '"' + (k === s.status ? ' selected' : '') + '>' + v.label + '</option>').join('');
+  let figs;
+  if (pl.io) figs = '<div><dt>Plan output / day</dt><dd>' + money(c.p7) + '<small>at 7-day prices</small></dd></div><div><dt>After repairs</dt><dd>' + money(c.net) + '<small>repairs ' + money(c.repair) + ' / day</small></dd></div><div><dt>Build cost</dt><dd>' + money(c.cost) + '<small>area ' + c.area + ' of 500' + depthText(pl) + '</small></dd></div><div><dt>Payback</dt><dd>' + c.payback.toFixed(1) + ' d<small>cost ÷ after repairs</small></dd></div>';
+  else if (pl.rec) figs = '<div><dt>Profit / day, 5 experts</dt><dd>' + money(pl.rec.p5) + '<small>recorded figure</small></dd></div><div><dt>Profit / day, start</dt><dd>' + money(pl.rec.p0) + '<small>recorded figure</small></dd></div><div><dt>Build cost</dt><dd>' + money(c.cost) + '<small>area ' + c.area + ' of 500' + depthText(pl) + '</small></dd></div><div><dt>Payback at start</dt><dd>' + (c.payback ? c.payback.toFixed(1) + ' d' : '–') + '<small>cost ÷ start profit</small></dd></div>';
+  else figs = '<div><dt>Profit / day</dt><dd>–<small>no figure recorded</small></dd></div><div><dt>Build cost</dt><dd>' + money(c.cost) + '<small>area ' + c.area + ' of 500' + depthText(pl) + '</small></dd></div>';
+  let outs = '';
+  if (c.out) outs = '<div><span class="lbl">Net output per day and share of CI1 7-day trading</span><div class="outs">' + c.out.map(o => { const k = o.share > 15 ? 'crit' : o.share > 10 ? 'warn' : ''; const w = Math.min(100, o.share / 20 * 100); return '<div class="out"><b>' + o.t + '</b><div class="meter" role="img" aria-label="' + o.share.toFixed(1) + ' percent of market"><i class="' + k + '" style="width:' + w + '%"></i></div><span>' + num(o.perDay) + ' · ' + o.share.toFixed(1) + '%</span></div>'; }).join('') + '</div></div>';
+  else if (pl.rec) outs = '<p class="sub">' + esc(pl.rec.src) + '.</p>'; else outs = '<p class="sub">This plan is not in the PRUNplanner empire, so it has no material I/O yet.</p>';
+  return '<article class="card" data-id="' + pl.id + '" style="--stripe:' + sx.color + '"><header><div><h3>' + esc(pl.name) + '</h3><p class="sub">' + esc(pl.planet) + ' · ' + esc(pl.cogc.toLowerCase()) + ' · experts: ' + esc(pl.exp) + '</p></div><select class="status" aria-label="Status of ' + esc(pl.name) + '">' + opts + '</select></header>' +
+    '<p class="desc">' + esc(pl.desc) + '</p>' + (pl.status === 'built' ? liveStrip(pl) : '') + '<dl class="figs">' + figs + '</dl>' + outs + '<div class="flags">' + flagsFor(pl, c).map(f => '<div class="flag ' + f.k + '">' + esc(f.t) + '</div>').join('') + '</div>' +
+    '<div><label class="lbl" for="n-' + pl.id + '">Notes</label><textarea class="note" id="n-' + pl.id + '">' + esc(s.note) + '</textarea></div></article>';
+}
+function visibleBases() {
+  const list = OPS.plans.filter(p => st.filter === 'all' || (st.filter === 'open' ? ['candidate', 'approved', 'idea'].includes(cur(p.id).status) : cur(p.id).status === st.filter));
+  const key = { profit: p => -(CALC[p.id].headline || 0), payback: p => CALC[p.id].payback == null ? 1e9 : CALC[p.id].payback, cost: p => CALC[p.id].cost, name: p => p.name.toLowerCase() }[st.sortBy];
+  return list.sort((a, b) => { const x = key(a), y = key(b); return x < y ? -1 : x > y ? 1 : 0; });
+}
+
+// ---------- LOG
+function viewLog() {
+  const rows = st.snaps.map(s => { const w = worth(s); return '<tr><td>' + fmtDT(s.t) + '</td><td class="n">v' + (s.v || 1) + '</td><td class="n">' + money(w.full != null ? w.full : w.ex) + (w.full == null ? ' *' : '') + '</td><td class="n">' + money(debt(s)) + '</td><td class="n">' + (s.trades || []).length + '</td></tr>'; }).join('');
+  const cashRows = st.cash.slice(0, 8).map(c => '<tr><td>' + fmtDT(c.t) + '</td><td class="n">' + num(c.cis) + '</td></tr>').join('');
+  return '<div class="cols"><div><div class="panel"><h2>Snapshots</h2>' + (rows ? '<div class="tablewrap"><table><thead><tr><th>Taken</th><th>Format</th><th>Net worth</th><th>Debt</th><th>Trades</th></tr></thead><tbody>' + rows + '</tbody></table></div><p class="sub">* excludes cash, no cash entry yet.</p>' : '<p class="sub">None yet.</p>') + '</div>' +
+    '<div class="panel"><h2>Cash entries</h2>' + (cashRows ? '<div class="tablewrap"><table><thead><tr><th>Entered</th><th>CIS</th></tr></thead><tbody>' + cashRows + '</tbody></table></div>' : '<p class="sub">None yet. Enter cash on the Today tab.</p>') + '</div></div>' +
+    '<div><div class="panel"><h2>Import XIT export</h2><p>Gives the real daily cash and equity history from the game: the Refined PrUn user data export (the .json file you saved). Choose it here and the Money tab uses it. Repeat about weekly.</p><div class="row"><input type="file" id="xitfile" accept=".json,application/json" aria-label="XIT export file"><span class="sub" id="xitmsg"></span></div>' + (st.finch.length ? '<p class="sub">Imported: ' + st.finch.length + ' days, last ' + fmtDT(st.finch[st.finch.length - 1].t) + '.</p>' : '') + '</div><div class="panel"><h2>Automatic snapshots</h2><p>A job on GitHub takes a snapshot about every 30 minutes, with or without your PC. FIO only updates when you open things in the game, so the data can still be hours old. To run one right now, open the <a href="https://github.com/IISAMII/PrUnVivaldiOps/actions/workflows/snapshot.yml" target="_blank" rel="noopener">snapshot job</a> and press Run workflow.</p></div><div class="panel"><h2>Saving changes</h2><p>Settings, cash entries and notes are saved into the GitHub repo. That needs a token, kept only in this browser. Create a fine-grained token at github.com/settings/personal-access-tokens/new for the repo PrUnVivaldiOps only, with Contents: Read and write.</p><label class="lbl" for="ghtoken">GitHub token</label><div class="row"><input type="password" id="ghtoken" autocomplete="off" placeholder="github_pat_..." aria-label="GitHub token"><button class="act" id="ghsave">Save token</button><button class="act plain" id="ghclear">Remove</button></div><p class="sub" id="ghmsg">' + (localStorage.getItem('opsToken') ? 'A token is stored in this browser.' : 'No token stored. Changes cannot be saved.') + '</p></div></div></div>';
+}
+
+// ---------- ships
+const shortLoc = x => { if (!x) return '–'; const parts = String(x).split(' - '); let l = parts[parts.length - 1] || x; if (/^station$/i.test(l.trim()) || /station/i.test(l)) return 'Benten Station'; return l.replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s*-?\s*orbit\s*$/i, '').trim() || x; };
+function deriveTrips() {
+  const snaps = st.snaps.filter(s => s.ships && s.ships.length).slice().sort((a, b) => a.t - b.t); const trips = [], byFid = {};
+  snaps.forEach(s => (s.ships || []).forEach(sh => {
+    if (!sh.to && !sh.from) return;
+    const arr = sh.arr || (s.t + sh.etaH * HR), dep = sh.dep || null;
+    let tr = sh.fid ? byFid[sh.fid] : null;
+    if (!tr) tr = trips.find(x => x.r === sh.r && x.from === sh.from && x.to === sh.to && Math.abs(x.arr - arr) < 40 * 60e3);
+    if (!tr) { tr = { r: sh.r, from: sh.from, to: sh.to, dep, arr, fid: sh.fid || null, first: s.t, last: s.t, n: 0, cargo: null }; trips.push(tr); }
+    if (sh.fid) { byFid[sh.fid] = tr; tr.fid = sh.fid; }
+    if (dep && !tr.dep) tr.dep = dep; if (sh.arr) tr.arr = sh.arr; tr.last = s.t; tr.n++; if (sh.fuel) tr.fuel = sh.fuel;
+    const inflight = sh.etaH > 0;
+    if (!tr.cargo || (inflight && !tr.inflight)) { Object.assign(tr, { cargo: sh.cargo || {}, cargoVal: sh.cargoVal, wl: sh.wl, vl: sh.vl, wc: sh.wc, vc: sh.vc, split: sh.split || { S: 0, P: 0, O: 0 }, inflight, cargoAt: s.t, px: s.px }); }
+  }));
+  return trips.sort((a, b) => (b.dep || b.arr) - (a.dep || a.arr));
+}
+const tripKind = tr => { const sp = tr.split || { S: 0, P: 0, O: 0 }, t = sp.S + sp.P + sp.O; if (!t) return 'Empty'; if (sp.S / t >= 0.6) return 'Supplies'; if (sp.P / t >= 0.6) return 'Products'; return 'Mixed'; };
+let _obs = null;
+function observedTimes() {
+  const key = st.snaps.length + '|' + ((st.snaps[0] || {}).t || 0); if (_obs && _obs.key === key) return _obs.map;
+  const m = {}; deriveTrips().forEach(tr => { if (!tr.dep || !tr.arr) return; const a = shortLoc(tr.from), b = shortLoc(tr.to), k = [a, b].sort().join(' ↔ '); (m[k] = m[k] || { a: [a, b].sort()[0], b: [a, b].sort()[1], h: [] }).h.push((tr.arr - tr.dep) / HR); });
+  Object.values(m).forEach(x => { const s = x.h.slice().sort((p, q) => p - q); x.med = s[Math.floor(s.length / 2)]; x.n = s.length; });
+  _obs = { key, map: m }; return m;
+}
+const observedFlight = p => { const m = observedTimes(); const x = Object.values(m).find(y => (y.a === 'Benten Station' && y.b === p) || (y.b === 'Benten Station' && y.a === p)); return x ? x.med : null; };
+function timelineSvg(trips) {
+  const T = trips.filter(t => t.arr); if (!T.length) return ''; const ships = [...new Set(T.map(t => t.r))].sort();
+  const now = Date.now(), t1 = Math.max(now + 6 * HR, ...T.map(t => t.arr)), t0 = Math.min(...T.map(t => t.dep || (t.arr - 10 * HR))) - 2 * HR, W = 700, L = 70, rowH = 46, H = ships.length * rowH + 30, X = t => L + (t - t0) / (t1 - t0) * (W - L - 8);
+  const col = k => k === 'Supplies' ? 'var(--accent, #4aa3df)' : k === 'Products' ? 'var(--good)' : 'var(--warn)';
+  let g = ''; for (let d = Math.ceil(t0 / DAY); d * DAY <= t1; d++) { const x = X(d * DAY); g += '<line x1="' + x + '" x2="' + x + '" y1="8" y2="' + (H - 22) + '" stroke="var(--line)"/><text x="' + (x + 3) + '" y="' + (H - 8) + '" font-size="11" fill="var(--muted)">' + dayText(d * DAY + 12 * HR) + '</text>'; }
+  g += '<line x1="' + X(now) + '" x2="' + X(now) + '" y1="4" y2="' + (H - 22) + '" stroke="var(--crit)" stroke-dasharray="3 3"/>';
+  ships.forEach((r, i) => { const y = 10 + i * rowH; g += '<text x="2" y="' + (y + 24) + '" font-size="12" fill="var(--ink, currentColor)">' + esc(r.replace('AVI-', '')) + '</text>';
+    T.filter(t => t.r === r).forEach(t => { const known = !!t.dep, x0 = X(t.dep || (t.arr - 8 * HR)), x1 = X(t.arr), w = Math.max(3, x1 - x0), lab = shortLoc(t.from).split(' ')[0] + ' → ' + shortLoc(t.to).split(' ')[0];
+      g += '<g><title>' + esc(r + ': ' + shortLoc(t.from) + ' → ' + shortLoc(t.to) + ', ' + (known ? fmtDT(t.dep) + ' to ' : 'start unknown, arrives ') + fmtDT(t.arr) + ' · ' + tripKind(t)) + '</title><rect x="' + x0 + '" y="' + (y + 6) + '" width="' + w + '" height="26" rx="4" fill="' + col(tripKind(t)) + '" opacity="' + (known ? 0.9 : 0.45) + '"' + (known ? '' : ' stroke="' + col(tripKind(t)) + '" stroke-dasharray="4 3"') + '/>' + (w > 7.5 * lab.length ? '<text x="' + (x0 + 6) + '" y="' + (y + 24) + '" font-size="11" fill="#fff">' + esc(lab) + '</text>' : '') + '</g>'; }); });
+  return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" role="img" aria-label="Ship timeline">' + g + '</svg><div class="legend"><span><i style="background:var(--accent,#4aa3df)"></i>supplies</span><span><i style="background:var(--good)"></i>products</span><span><i style="background:var(--warn)"></i>mixed</span><span>faded = departure not known</span></div>';
+}
+function cargoTop(tr) { const c = tr.cargo || {}, px = tr.px || (latest() || {}).px || {}; return Object.entries(c).map(([t, n]) => ({ t, n, v: n * pv7(px, t) })).sort((a, b) => b.v - a.v).slice(0, 4).map(x => esc(x.t) + ' ' + num(x.n)).join(', '); }
+function viewShips() {
+  const trips = deriveTrips(), now = Date.now(), obs = Object.values(observedTimes()).sort((a, b) => a.a.localeCompare(b.a) || a.b.localeCompare(b.b));
+  const known = trips.filter(t => t.dep).length, ships = new Set(trips.map(t => t.r)).size;
+  const tiles = '<section class="tiles"><div class="tile"><div class="k">Trips logged</div><div class="v">' + trips.length + '</div><div class="s">' + known + ' with known departure</div></div><div class="tile"><div class="k">Ships</div><div class="v">' + ships + '</div><div class="s">' + trips.filter(t => t.arr > now).length + ' in flight now</div></div><div class="tile"><div class="k">Routes timed</div><div class="v">' + obs.length + '</div><div class="s">from real flights</div></div><div class="tile"><div class="k">Last seen</div><div class="v">' + (trips.length ? ageText(now - Math.max(...trips.map(t => t.last))) : '–') + '</div><div class="s">in the newest snapshot</div></div></section>';
+  const rows = trips.slice(0, 40).map(tr => {
+    const done = tr.arr <= now, dur = tr.dep ? (tr.arr - tr.dep) / HR : null, k = tripKind(tr), fill = tr.wc ? Math.round(tr.wl / tr.wc * 100) : null;
+    return '<tr><td><b>' + esc((tr.r || '').replace('AVI-', '')) + '</b></td><td>' + esc(shortLoc(tr.from)) + ' → ' + esc(shortLoc(tr.to)) + '<div class="sub">' + (done ? 'arrived' : 'in flight') + '</div></td><td class="when hide-s">' + (tr.dep ? fmtDT(tr.dep) : '<span class="muted">unknown</span>') + '</td><td class="when">' + fmtDT(tr.arr) + '</td><td class="n hide-s">' + (dur != null ? dur.toFixed(1) + ' h' : '–') + '</td><td><span class="badge ' + (k === 'Supplies' ? '' : k === 'Products' ? 'good' : '') + '">' + k + '</span> ' + (tr.cargoVal != null ? money(tr.cargoVal) : '') + (fill != null ? '<div class="sub">' + fill + '% of weight, ' + Math.round(tr.vl / tr.vc * 100) + '% of volume</div>' : '') + '<div class="sub">' + cargoTop(tr) + (tr.inflight ? '' : ' (seen after arrival, may be unloaded)') + '</div></td></tr>';
+  }).join('');
+  const table = '<div class="tablewrap"><table><thead><tr><th>Ship</th><th>Route</th><th class="hide-s">Departed</th><th>Arrives</th><th class="hide-s">Flight</th><th>Cargo</th></tr></thead><tbody>' + (rows || '<tr><td colspan="6" class="muted">No trips yet. They appear after snapshots.</td></tr>') + '</tbody></table></div>';
+  const sup = ['Katoa', 'Umbra', 'Milliways', 'Nemesis'];
+  const obsRows = obs.map(x => { const p = x.a === 'Benten Station' ? x.b : (x.b === 'Benten Station' ? x.a : null); const set = p && S().flight && S().flight[p] != null ? S().flight[p] : null; return '<tr><td>' + esc(x.a) + ' ↔ ' + esc(x.b) + '</td><td class="n">' + x.med.toFixed(1) + ' h</td><td class="n">' + x.n + '</td><td class="n">' + (p ? (set != null ? set + ' h (your setting)' : (DEF_FLIGHT[p] != null ? 'was ' + DEF_FLIGHT[p] + ' h, now this' : 'now this')) : '–') + '</td></tr>'; }).join('');
+  const times = '<div class="tablewrap"><table><thead><tr><th>Route</th><th>Flight time</th><th>Trips</th><th>Used on the Supply tab</th></tr></thead><tbody>' + (obsRows || '<tr><td colspan="4" class="muted">No timed flights yet.</td></tr>') + '</tbody></table></div><p class="sub">Median of observed flights (departure to arrival, including take-off). Flight times change a little with load. The Supply tab uses these unless you typed your own number there. Only Benten Station ↔ base routes feed the Supply tab.</p>';
+  const chk = runChecksHtml(trips), use = shipUseHtml(trips);
+  return '<p class="asof">Built from your snapshots. FIO only keeps the current flight of each ship, so a trip is logged only when a snapshot (or you opening the ships in the game) catches it. Short trips between snapshots are missing; the timeline shows gaps instead of guessing.</p>' + tiles +
+    '<div class="panel"><h2>Timeline</h2>' + timelineSvg(trips) + '</div>' +
+    '<div class="panel"><h2>Trips</h2>' + table + '</div>' +
+    '<div class="panel"><h2>Flight times</h2>' + times + '</div>' +
+    '<div class="panel"><h2>Supply run check</h2>' + chk + '</div>' +
+    '<div class="panel"><h2>Ship use and routes</h2>' + use + '</div>';
+}
+
+
+// supply-run check and ship use (real data from trips + latest snapshot)
+function runCheck(tr) {
+  const f = shortLoc(tr.from), t = shortLoc(tr.to), B = 'Benten Station'; const toBase = f === B && t !== B, fromBase = t === B && f !== B; if (!toBase && !fromBase) return null;
+  const p = toBase ? t : f, s = latest(), b = s && s.bases.find(x => x.p === p); if (!b || !b.net) return null;
+  const rows = Object.entries(tr.cargo || {}).map(([k, n]) => { const r = b.net[k] || 0; const per = toBase ? (r < 0 ? -r : 0) : (r > 0 ? r : 0); return { t: k, n, per, days: per ? n / per : null }; }).filter(x => x.per).sort((x, y) => x.days - y.days);
+  const miss = toBase ? Object.keys(b.net).filter(k => b.net[k] < 0 && !(tr.cargo || {})[k] && (b.inv && b.inv[k] != null) && (b.inv[k] / -b.net[k]) < targetD(p) + 1).map(k => ({ t: k, d: b.inv[k] / -b.net[k] })) : [];
+  return { p, toBase, rows, miss, tgt: targetD(p) };
+}
+function runChecksHtml(trips) {
+  const list = trips.map(tr => ({ tr, c: runCheck(tr) })).filter(x => x.c && x.c.rows.length).slice(0, 5);
+  if (!list.length) return '<p class="sub">No trip with a known cargo to or from a base yet. Runs appear here after a snapshot catches them in flight.</p>';
+  const blocks = list.map(({ tr, c }) => {
+    const lim = c.rows[0], body = c.rows.slice(0, 8).map(x => '<tr><td>' + esc(x.t) + '</td><td class="n">' + num(x.n) + '</td><td class="n">' + (x.per >= 10 ? Math.round(x.per) : x.per.toFixed(1)) + '</td><td class="n ' + (c.toBase && x.days < c.tgt ? 'neg' : '') + '">' + x.days.toFixed(1) + ' d</td></tr>').join('');
+    const head = c.toBase ? 'Supplies to ' + esc(c.p) : 'Products from ' + esc(c.p);
+    const sum = c.toBase ? 'The load alone covers ' + lim.days.toFixed(1) + ' days of ' + esc(lim.t) + ' (the tightest item); your target is ' + c.tgt + ' days' + (lim.days >= c.tgt ? ', so on target.' : ', so on its own it is short.') + (c.miss.length ? ' Not on board but low at the base: ' + c.miss.slice(0, 4).map(m => esc(m.t) + ' ' + m.d.toFixed(1) + ' d').join(', ') + '.' : '') : 'This haul is ' + lim.days.toFixed(1) + ' to ' + c.rows[c.rows.length - 1].days.toFixed(1) + ' days of output.';
+    return '<div class="runb"><b>' + esc((tr.r || '').replace('AVI-', '')) + ' · ' + head + '</b> <span class="sub">' + (tr.dep ? fmtDT(tr.dep) : 'departure unknown') + ' → ' + fmtDT(tr.arr) + '</span>' +
+      '<div class="tablewrap"><table><thead><tr><th>Material</th><th>Carried</th><th>' + (c.toBase ? 'Use' : 'Output') + '/day</th><th>Covers</th></tr></thead><tbody>' + body + '</tbody></table></div><p class="sub">' + sum + '</p></div>';
+  }).join('');
+  return blocks + '<p class="sub">Compared with the base\'s current use per day (latest snapshot) and your target on the Supply tab. Cargo is what the ship held when a snapshot saw it.</p>';
+}
+function shipUseHtml(trips) {
+  const s = latest(); if (!s) return '';
+  const now = Date.now(), B = 'Benten Station', ships = [...new Set(trips.map(t => t.r))].sort(), shipRef = (s.ships || [])[0] || { wc: 500, vc: 500 };
+  const known = trips.filter(t => t.dep && t.arr <= now + 1), t0 = known.length ? Math.min(...known.map(t => t.dep)) : null, win = t0 ? Math.max(now - t0, HR) : null;
+  const srows = ships.map(r => { const mine = trips.filter(t => t.r === r), kn = mine.filter(t => t.dep), fly = kn.reduce((a, t) => a + (Math.min(t.arr, now) - t.dep) / HR, 0), w = mine.filter(t => t.wc && t.cargoVal != null), fw = w.length ? w.reduce((a, t) => a + t.wl / t.wc, 0) / w.length : null, fv = w.length ? w.reduce((a, t) => a + t.vl / t.vc, 0) / w.length : null;
+    return '<tr><td><b>' + esc(r.replace('AVI-', '')) + '</b></td><td class="n">' + mine.length + '</td><td class="n">' + fly.toFixed(0) + ' h</td><td class="n">' + (win && kn.length ? Math.round(fly * HR / win * 100) + '%' : '–') + '</td><td class="n">' + (fw != null ? Math.round(fw * 100) + '% / ' + Math.round(fv * 100) + '%' : '–') + '</td></tr>'; }).join('');
+  const capT = (shipRef.wc || 500) * 0.98, capV = (shipRef.vc || 500) * 0.98; let totalH = 0;
+  const frows = s.bases.filter(b => b.net).map(b => {
+    let ti = 0, vi = 0, to = 0, vo = 0; Object.entries(b.net).forEach(([k, r]) => { const w = MATS[k] || [0, 0]; if (r < 0) { ti += -r * 7 * w[0]; vi += -r * 7 * w[1]; } else { to += r * 7 * w[0]; vo += r * 7 * w[1]; } });
+    const loads = Math.max(ti / capT, vi / capV, to / capT, vo / capV), fh = flightH(b.p), rt = loads * 2 * fh; totalH += rt;
+    return '<tr><td>' + esc(b.p) + '</td><td class="n">' + Math.round(ti) + ' / ' + Math.round(to) + ' t</td><td class="n">' + loads.toFixed(1) + '</td><td class="n">' + (2 * fh).toFixed(0) + ' h</td><td class="n">' + rt.toFixed(0) + ' h</td></tr>';
+  }).join('');
+  const nS = Math.max(ships.length, (s.ships || []).length, 1), avail = nS * 168, pct = totalH / avail * 100;
+  return '<div class="tablewrap"><table><thead><tr><th>Ship</th><th>Trips logged</th><th>Flying</th><th>Of logged time</th><th>Load (weight / volume)</th></tr></thead><tbody>' + (srows || '<tr><td colspan="5" class="muted">No trips yet.</td></tr>') + '</tbody></table></div>' +
+    (t0 ? '<p class="sub">Log covers ' + fmtDT(t0) + ' to now. Idle time is not tracked while a ship waits, so low numbers early on mostly mean few trips were caught.</p>' : '') +
+    '<h3 style="margin:14px 0 4px;font-size:15px">Flows needed per week</h3><div class="tablewrap"><table><thead><tr><th>Base</th><th>In / out</th><th>Ship loads</th><th>Round trip</th><th>Flying time</th></tr></thead><tbody>' + frows + '</tbody></table></div>' +
+    '<p class="sub">From current daily use and output, a full ship (' + Math.round(capT) + ' t / ' + Math.round(capV) + ' m³ usable) and your flight times. Total ' + totalH.toFixed(0) + ' h a week against ' + avail + ' h with ' + nS + ' ship' + (nS > 1 ? 's' : '') + ' (' + pct.toFixed(0) + '% busy, loading and waiting not counted). ' + (pct > 70 ? 'Little room: a new base needs a third ship or longer targets.' : 'A new base of average size would add about ' + (totalH / Math.max(frows.split('<tr>').length - 1, 1)).toFixed(0) + ' h a week (' + (totalH / Math.max(frows.split('<tr>').length - 1, 1) / avail * 100).toFixed(0) + '%).') + '</p>';
+}
+
+// ---------- shell
+const TABS = [['today', 'Today'], ['supply', 'Supply'], ['ships', 'Ships'], ['money', 'Money'], ['bases', 'Bases'], ['log', 'Log']];
+function render() {
+  const el = document.getElementById('view'); const scroll = window.scrollY;
+  document.getElementById('tabs').innerHTML = TABS.map(([k, l]) => '<button class="tab" data-t="' + k + '"' + (k === st.tab ? ' aria-current="page"' : '') + '>' + l + '</button>').join('');
+  el.innerHTML = { today: viewToday, supply: viewSupply, ships: viewShips, money: viewMoney, bases: viewBases, log: viewLog }[st.tab]();
+  if (st.tab === 'log') { const c = document.getElementById('coll'); if (c) c.value = COLLECTOR; }
+  window.scrollTo(0, scroll);
+}
+document.getElementById('tabs').addEventListener('click', e => { const b = e.target.closest('[data-t]'); if (!b) return; st.tab = b.dataset.t; try { history.replaceState(null, '', '#' + st.tab); } catch (x) {} render(); });
+const view = document.getElementById('view');
+view.addEventListener('click', async e => {
+  const f = e.target.closest('#fchips [data-f]'); if (f) { st.filter = f.dataset.f; render(); return; }
+  const id = e.target.id;
+  if (id === 'cashsave') { const inp = document.getElementById('cashin'); if (inp.value === '' || !(Number(inp.value) >= 0)) return; const t = Date.now(), cis = Math.round(Number(inp.value)); st.cash.unshift({ t, cis }); await enqueue('cash/c' + t, { t, cis }, 'Cash saved.'); render(); }
+  const ad = e.target.closest('[data-adjdel]'); if (ad) { const t = Number(ad.dataset.adjdel); st.adj = st.adj.filter(a => a.t !== t); if (db) { try { await db.doc('adjust/a' + t).delete(); setSync('Removed.'); } catch (x) { setSync('Could not remove.'); } } render(); return; }
+  if (id === 'kitgo') { st.kit = document.getElementById('kitin').value; render(); return; }
+  if (id === 'kitclear') { st.kit = ''; render(); return; }
+  if (id === 'adjsave') { const l = document.getElementById('adjl').value.trim(), a = Number(document.getElementById('adja').value); if (!l || !a) return; const t = Date.now(); st.adj.unshift({ t, label: l, amt: Math.round(a) }); await enqueue('adjust/a' + t, { t, label: l, amt: Math.round(a) }, 'Saved.'); render(); }
+  if (id === 'collcopy') { try { await navigator.clipboard.writeText(COLLECTOR); setSync('Collector copied.'); } catch (x) { document.getElementById('coll').select(); setSync('Select the text and copy it.'); } }
+  if (id === 'fill') { const s = latest(); const d = fillShip(s); if (d == null) { setSync('Nothing fits at 0.5 days, or the ship has no capacity in the snapshot.'); return; } const tg = {}; s.bases.forEach(b => { if (incl(b.p)) tg[b.p] = d; }); await saveSettings({ target: Object.assign({}, S().target, tg) }); setSync('All included bases set to ' + d.toFixed(2) + ' days.'); render(); }
+  const cp = e.target.closest('[data-copy]'); if (cp) { const ta = document.getElementById('pk' + cp.dataset.copy); try { await navigator.clipboard.writeText(ta.value); setSync('Copied.'); } catch (x) { ta.select(); setSync('Select the text and copy it.'); } }
+  if (id === 'pastesave') {
+    const msg = document.getElementById('pastemsg'); let o; try { o = JSON.parse(document.getElementById('paste').value); } catch (x) { msg.textContent = 'That is not valid JSON.'; return; }
+    if (!o || !(o.v >= 1) || !Array.isArray(o.bases) || !o.t) { msg.textContent = 'This is not a Vivaldi Ops snapshot.'; return; }
+    st.snaps = [o].concat(st.snaps.filter(s => s.t !== o.t)).sort((a, b) => b.t - a.t); await enqueue('snaps/s' + o.t, o, 'Snapshot saved.'); render();
+  }
+});
+view.addEventListener('toggle', e => { const d = e.target.closest && e.target.closest('details[data-open]'); if (d) st.openB[d.dataset.open] = d.open; }, true);
+view.addEventListener('focusin', e => { const t = e.target; if (t && t.tagName === 'INPUT' && ['text', 'number'].includes(t.type) && t.id !== 'adjl') { t.dataset.sel = '1'; try { t.select(); } catch (x) {} setTimeout(() => { try { if (t.dataset.sel === '1') t.select(); } catch (x) {} }, 0); } });
+view.addEventListener('mouseup', e => { const t = e.target; if (t && t.dataset && t.dataset.sel === '1') { e.preventDefault(); t.dataset.sel = ''; } }, true);
+view.addEventListener('keydown', e => { const t = e.target; if (t && t.dataset && t.dataset.sel === '1') t.dataset.sel = ''; }, true);
+view.addEventListener('change', async e => {
+  const t = e.target, d = t.dataset || {};
+  if (t.id === 'xitfile') {
+    const msg = document.getElementById('xitmsg'), f = t.files && t.files[0]; if (!f) return;
+    try { const rows = deriveFinch(JSON.parse(await f.text())); if (!rows || !rows.length) { msg.textContent = 'No balance history found in this file.'; return; }
+      st.finch = rows; await enqueue('finch/main', { rows, importedAt: Date.now() }, 'XIT history imported.'); msg.textContent = rows.length + ' days imported.'; render(); }
+    catch (x) { msg.textContent = 'Could not read this file.'; }
+    return;
+  }
+  if (t.id === 'sort') { st.sortBy = t.value; render(); return; }
+  if (t.id === 'ship') { st.sup.ship = t.value; render(); return; }
+  if (t.id === 'leavepick') { if (t.value) { st.sup.leave = new Date(t.value).getTime(); render(); } return; }
+  if (t.id === 'leave') { const v = parseLeave(t.value); if (!t.value) st.sup.leave = null; else if (v) { st.sup.leave = v; if (v < Date.now() - 60000) setSync('That time is in the past, so now is used.'); } else setSync('Use DD-MM HH:MM, for example 05-11 08:30, or just HH:MM.'); render(); return; }
+  if (t.id === 'cship') { st.sup.countShip = t.checked; render(); return; }
+  if (t.id === 'deft') { const v = parseFloat(t.value); if (v > 0) { await saveSettings({ defTarget: v, target: {} }); render(); } return; }
+  if (d.cl) { const m = /^(\d{1,2})[:.](\d{2})$/.exec((t.value || '').trim()); if (m && +m[1] < 24 && +m[2] < 60) { const v = ((+m[1] + m[2] / 60 - tzOff()) % 24 + 24) % 24; await saveSettings({ claim: Object.assign({}, S().claim, { [d.cl]: v }) }); render(); } return; }
+  if (t.id === 'claim') { const v = parseFloat(t.value); if (v >= 0 && v < 24) { await saveSettings({ claimH: v }); render(); } return; }
+  if (d.inc) { const ex = Object.assign({}, S().exclude); if (t.checked) delete ex[d.inc]; else ex[d.inc] = true; await saveSettings({ exclude: ex }); render(); return; }
+  if (t.id === 'slots') { const v = parseInt(t.value, 10); if (v >= 1 && v <= 20) { await saveSettings({ slots: v }); for (const x of st.snaps) delete x._mix; render(); } return; }
+  if (d.mq) { const v = parseInt(t.value, 10); if (v >= 1 && v <= 40) { await saveSettings({ queue: Object.assign({}, S().queue, { [d.mq]: v }) }); render(); } return; }
+  if (d.fl) { const v = parseFloat(t.value); if (v >= 0) { await saveSettings({ flight: Object.assign({}, S().flight, { [d.fl]: v }) }); render(); } return; }
+  if (d.tg) { const v = parseFloat(t.value); if (v > 0) { await saveSettings({ target: Object.assign({}, S().target, { [d.tg]: v }) }); render(); } return; }
+  if (d.nb) { if (t.checked) delete st.sup.noBuy[d.nb]; else st.sup.noBuy[d.nb] = true; render(); return; }
+  const art = t.closest('.card'); if (!art) return; const id = art.dataset.id;
+  if (t.classList.contains('status') || t.classList.contains('note')) {
+    const patch = t.classList.contains('status') ? { status: t.value } : { note: t.value };
+    const next = Object.assign(cur(id), patch); st.saved[id] = next; enqueue('bases/' + id, next, 'Saved to this artifact.'); if (t.classList.contains('status')) render();
+  }
+});
+const h = location.hash.replace('#', ''); if (TABS.some(t => t[0] === h)) st.tab = h;
+render();
+
+(async () => {
+  const REPO = 'IISAMII/PrUnVivaldiOps';
+  const TOK = () => { try { return localStorage.getItem('opsToken') || ''; } catch (e) { return ''; } };
+  const GH = (method, file, body) => fetch('https://api.github.com/repos/' + REPO + '/contents/docs/data/' + file + (method === 'GET' ? '?ref=main' : ''), { method, headers: Object.assign({ Authorization: 'Bearer ' + TOK(), 'Content-Type': 'application/json' }, method === 'GET' ? { Accept: 'application/vnd.github.raw+json' } : { Accept: 'application/vnd.github+json' }), body: body ? JSON.stringify(body) : undefined, cache: 'no-store' });
+  const getJ = async (f, d, fresh) => { try { const r = (fresh && TOK()) ? await GH('GET', f) : await fetch('data/' + f + '?v=' + Math.floor(Date.now() / 60000)); if (!r.ok) return d; return await r.json(); } catch (e) { return d; } };
+  async function ghUpdate(file, fn, msg) {
+    for (let i = 0; i < 3; i++) {
+      const r = await fetch('https://api.github.com/repos/' + REPO + '/contents/docs/data/' + file + '?ref=main', { headers: { Authorization: 'Bearer ' + TOK(), Accept: 'application/vnd.github+json' }, cache: 'no-store' });
+      if (!r.ok) throw { code: 'read ' + r.status }; const j = await r.json();
+      const cur = JSON.parse(decodeURIComponent(escape(atob(j.content.replace(/\n/g, ''))))); const next = fn(cur);
+      const put = await GH('PUT', file, { message: msg, content: btoa(unescape(encodeURIComponent(JSON.stringify(next)))), sha: j.sha, branch: 'main' });
+      if (put.ok) return; if (put.status !== 409 && put.status !== 422) throw { code: 'write ' + put.status };
+    } throw { code: 'conflict' };
+  }
+  async function persist(path, data) {
+    if (!TOK()) throw { code: 'no token, add one on the Log tab' };
+    const [col, id] = path.split('/');
+    if (col === 'settings') return ghUpdate('settings.json', () => data, 'Settings');
+    if (col === 'bases') return ghUpdate('bases.json', o => { o[id] = data; return o; }, 'Base ' + id);
+    if (col === 'cash') return ghUpdate('cash.json', a => [data].concat(a.filter(x => x.t !== data.t)), 'Cash');
+    if (col === 'adjust') { const t = Number(id.slice(1)); return ghUpdate('adjust.json', a => (data ? [data] : []).concat(a.filter(x => x.t !== t)), 'Other assets'); }
+    if (col === 'finch') return ghUpdate('finch.json', () => data, 'XIT history');
+    throw { code: 'not supported' };
+  }
+  db = { doc: path => ({ set: d => persist(path, d), delete: () => persist(path, null) }) };
+  document.addEventListener('click', async e => {
+    const id = e.target && e.target.id; if (id !== 'ghsave' && id !== 'ghclear') return; const m = document.getElementById('ghmsg');
+    if (id === 'ghclear') { try { localStorage.removeItem('opsToken'); } catch (x) {} m.textContent = 'Token removed.'; return; }
+    const v = document.getElementById('ghtoken').value.trim(); if (!v) return;
+    try { localStorage.setItem('opsToken', v); } catch (x) { m.textContent = 'This browser blocks storage.'; return; }
+    const r = await GH('GET', 'settings.json'); m.textContent = r.ok ? 'Token works and is stored. Changes are now saved.' : 'GitHub refused it (' + r.status + '). Check the repo and the Contents permission.'; if (!r.ok) { try { localStorage.removeItem('opsToken'); } catch (x) {} }
+  });
+  setSync('Loading data...');
+  const [latest, hist, alerts, settings, cash, adjust, bases, finch] = await Promise.all([getJ('latest.json', null), getJ('history.json', []), getJ('alerts.json', []), getJ('settings.json', {}, 1), getJ('cash.json', [], 1), getJ('adjust.json', [], 1), getJ('bases.json', {}, 1), getJ('finch.json', { rows: [] }, 1)]);
+  st.snaps = (latest ? [latest] : []).concat((hist || []).filter(x => !latest || x.t !== latest.t)).sort((a, b) => b.t - a.t);
+  st.alerts = (alerts || []).slice().sort((a, b) => b.t - a.t).slice(0, 40); st.cash = (cash || []).slice().sort((a, b) => b.t - a.t); st.adj = (adjust || []).slice().sort((a, b) => b.t - a.t);
+  st.saved = bases || {}; st.finch = (finch && finch.rows) || []; st.settings = settings || {};
+  setSync(latest ? 'Data from GitHub, newest snapshot ' + fmtDT(latest.t) + '.' : 'No snapshot yet. The GitHub job takes one within about 30 minutes.'); render();
+})();
+</script>
+</body>
+</html>
