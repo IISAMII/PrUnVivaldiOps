@@ -23,7 +23,7 @@ jobs:
           node-version: 20
       - name: Take snapshot
         env:
-          FIO_KEY: ${{ secrets.FIO_KEY }}
+          FIO_KEY: ${{ secrets.FIO_KEY || secrets.FIO }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: node scripts/snapshot.cjs
       - name: Save data
