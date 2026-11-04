@@ -423,10 +423,19 @@ function viewToday() {
     '<div class="tile"><div class="k">Open CX orders</div><div class="v">' + (s.orders || []).length + '</div><div class="s">' + (s.trades || []).length + ' trades in FIO</div></div>';
   const alerts = '<ul class="alerts">' + (A.length ? A.map(a => '<li class="alert ' + a.k + '"><b>' + a.tag + '</b><span>' + a.text + '<small>' + a.small + '</small></span></li>').join('') : '<li class="alert good"><b>Clear</b><span>Nothing needs attention.</span></li>') + '</ul>';
   let sup;
+  let FC = null; try { if ((s.ships || []).length) FC = forecast(s, 168); } catch (x) {}
+  const shipLine = (b, f) => {
+    const en = (s.ships || []).filter(sh => shortLoc(sh.to) === b.p && (sh.arr || (s.t + (sh.etaH || 0) * HR)) > now), out = [];
+    en.forEach(sh => out.push('<span class="pos">On its way:</span> ' + esc(sh.r.replace('AVI-', '')) + ' arrives ' + fmtDT(sh.arr || (s.t + sh.etaH * HR))));
+    const r = FC && FC.runs.find(x => !x.est && x.stops.some(y => y.p === b.p));
+    if (r) { const y = r.stops.find(z => z.p === b.p); out.push('<span class="' + (y.downH > 0.05 ? 'critc' : 'pos') + '">Planned:</span> ' + esc(r.label) + ' leaves ' + (r.dep <= now + 6e4 ? 'now' : fmtDT(r.dep)) + ', arrives ' + fmtDT(y.arr) + (y.downH > 0.05 ? ' <span class="critc">(down about ' + Math.round(y.downH) + ' h)</span>' : ' (in time)')); }
+    else if (FC && f && f.ro !== Infinity && f.ro < now + 7 * DAY && !en.length) out.push('<span class="warnc">No trip planned</span> before it runs short');
+    return out.length ? '<div class="sub">' + out.join('<br>') + '</div>' : '';
+  };
   if (s.bases.every(b => b.inv)) {
     sup = '<div>' + s.bases.map(b => {
       const { rows } = runouts(b, now); const f = rows[0], rest = rows.slice(1, 4).filter(x => x.ro !== Infinity).map(x => esc(x.t) + ' ' + fmtDT(x.ro)).join(', ');
-      return '<div class="rw"><b>' + esc(b.p) + '</b><div>' + (f ? '<span class="' + (f.ro - now < 24 * HR ? 'critc' : '') + '">' + esc(f.t) + ' at ' + fmtDT(f.ro) + '</span> <span class="muted">' + rel(f.ro) + '</span>' : '–') + (rest ? '<div class="sub">Then ' + rest + '</div>' : '') + '</div></div>'; }).join('') + '</div>' +
+      return '<div class="rw"><b>' + esc(b.p) + '</b><div>' + (f ? '<span class="' + (f.ro - now < 24 * HR ? 'critc' : '') + '">' + esc(f.t) + ' at ' + fmtDT(f.ro) + '</span> <span class="muted">' + rel(f.ro) + '</span>' : '–') + (rest ? '<div class="sub">Then ' + rest + '</div>' : '') + shipLine(b, f) + '</div></div>'; }).join('') + '</div>' +
       '<p class="sub">Simulated order by order. Workers take their consumables once a day; the claim time is set per base on the Supply tab (default ' + new Date(Date.UTC(2026, 0, 1) + claimH() * HR).toLocaleTimeString('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }) + ' your time). Production orders take inputs when they start.</p>';
   } else sup = '<p class="sub">The latest snapshot is in the old format. Log a new one for exact times.</p>';
   const ships = shipsBlock(s);
