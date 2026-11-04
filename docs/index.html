@@ -255,7 +255,7 @@ function claimNote(k) { const o = OBS[k]; if (!o || !(o.pos + o.neg)) return '';
 const flightH = p => { if (S().flight && S().flight[p] != null) return S().flight[p]; const o = observedFlight(p); if (o != null) return Math.round(o * 100) / 100; return DEF_FLIGHT[p] != null ? DEF_FLIGHT[p] : 6; };
 const flightSrc = p => (S().flight && S().flight[p] != null) ? 'set' : (observedFlight(p) != null ? 'observed' : 'default');
 const targetD = p => (S().target && S().target[p] != null) ? S().target[p] : (S().defTarget || 2.5);
-const incl = p => !(S().exclude && S().exclude[p]);
+const incl = p => (st.sup && st.sup.only) ? st.sup.only.includes(p) : !(S().exclude && S().exclude[p]);
 function saveSettings(patch) { st.settings = Object.assign({}, st.settings, patch); return enqueue('settings/main', st.settings, 'Settings saved.'); }
 const latest = () => st.snaps.find(s => s.v >= 2) || st.snaps[0] || null;
 const latestAny = () => st.snaps[0] || null;
@@ -389,7 +389,7 @@ function alertsFor(s) {
     if (age > 6 * HR) add('warn', 'Stale', '<b>' + esc(b.p) + '</b> data is ' + ageText(age) + ' old', 'FIO only updates when you open this base in the game. Open it, then take a new snapshot. The run-out times already account for the time since then.');
     if (b.oldestRepairD > 45) add('warn', 'Repair', '<b>' + esc(b.p) + '</b> has buildings not repaired for ' + b.oldestRepairD + ' d', 'Lowest condition ' + (b.minCond * 100).toFixed(1) + '%.');
   });
-  try { if ((s.ships || []).length) { const F = forecast(s, 48), r = F.runs[0]; if (r) { const late = r.lateH > 0.05, h = (r.sendBy - now) / HR; if (late || h < 12) add(late ? 'crit' : 'warn', 'Send', 'Send a run to <b>' + esc(r.p) + '</b> by ' + fmtDT(r.sendBy) + ' (' + rel(r.sendBy) + ')', late ? 'No ship is free in time; the base would be short for about ' + r.lateH.toFixed(0) + ' h. See When to send on the Ships tab.' : esc(r.ship.replace('AVI-', '')) + ' can leave from ' + fmtDT(r.earliest) + '. See When to send on the Ships tab.'); } } } catch (x) {}
+  try { if ((s.ships || []).length) { const F = forecast(s, 48), r = F.runs.find(x => !x.est); if (r) { const late = r.lateH > 0.05, h = (r.sendBy - now) / HR; if (late || h < 12) add(late ? 'crit' : 'warn', 'Send', 'Send a run to <b>' + esc(r.label) + '</b> by ' + fmtDT(r.sendBy) + ' (' + rel(r.sendBy) + ')', (late ? 'No ship is free in time; a base would be down for about ' + r.lateH.toFixed(0) + ' h. ' : esc(r.ship.replace('AVI-', '')) + ' can leave from ' + fmtDT(r.earliest) + '. ') + 'See When to send on the Ships tab.'); } } } catch (x) {}
   const stl = (s.ships || []).filter(sh => shipStatus(s, sh).stale);
   if (stl.length) add('warn', 'Ships', 'FIO ship data is ' + ageText(Math.max(...stl.map(sh => shipStatus(s, sh).fAge))) + ' old', 'FIO has not seen the ships move since then, so positions and cargo may be out of date. Open the ships and the warehouse in the game, then log a new snapshot.');
   (s.ships || []).forEach(sh => { if (sh.cond < 0.9) add('warn', 'Ship', esc(sh.r) + ' condition is ' + Math.round(sh.cond * 100) + '%', 'Repair before it drops further.'); });
@@ -435,8 +435,8 @@ function viewToday() {
 
 // ---------- SUPPLY
 function shipOf(s) { const ships = s.ships || []; const reg = st.sup.ship && ships.find(x => x.r === st.sup.ship) ? st.sup.ship : (ships.find(x => /benten/i.test(x.to || '') && x.etaH <= 0) || ships[0] || {}).r; return ships.find(x => x.r === reg) || null; }
-function planBase(s, b, leave, tgt, on) {
-  const now = Date.now(); const arrT = leave + flightH(b.p) * HR, endT = arrT + tgt * DAY;
+function planBase(s, b, leave, tgt, on, arrOv) {
+  const now = Date.now(); const arrT = arrOv != null ? arrOv : leave + flightH(b.p) * HR, endT = arrT + tgt * DAY;
   const sims = claimCands(b.p).map(h => baseSim(b, now, h)), sim = sims[0], mats = []; let tons = 0, vol = 0, value = 0, firstNow = Infinity, lastsTo = Infinity;
   usedTickers(b).forEach(t => {
     const stNow = Math.max(0, stockAt(sim, t, now)), ro = firstShort(sim, t, now), onArr = Math.max(0, stockAt(sim, t, arrT));
@@ -450,7 +450,7 @@ function planBase(s, b, leave, tgt, on) {
 }
 function planSupply(s, tgtOf) {
   const now = Date.now(), leave = Math.max(now, st.sup.leave || now);
-  const bases = s.bases.map(b => planBase(s, b, leave, tgtOf ? tgtOf(b.p) : targetD(b.p), incl(b.p)));
+  const bases = s.bases.map(b => planBase(s, b, leave, tgtOf ? tgtOf(b.p) : targetD(b.p), incl(b.p), (st.sup.arrOv && st.sup.arrOv.leave === st.sup.leave) ? st.sup.arrOv.a[b.p] : null));
   const total = {}, per = {};
   bases.filter(x => x.on).forEach(x => { per[x.b.p] = {}; x.mats.forEach(m => { if (m.need > 0) { total[m.t] = (total[m.t] || 0) + m.need; per[x.b.p][m.t] = m.need; } }); });
   const tons = bases.filter(x => x.on).reduce((a, x) => a + x.tons, 0), vol = bases.filter(x => x.on).reduce((a, x) => a + x.vol, 0);
@@ -1022,31 +1022,38 @@ function timelineSvg(trips) {
 function cargoTop(tr) { const c = tr.cargo || {}, px = tr.px || (latest() || {}).px || {}; return Object.entries(c).map(([t, n]) => ({ t, n, v: n * pv7(px, t) })).sort((a, b) => b.v - a.v).slice(0, 4).map(x => esc(x.t) + ' ' + num(x.n)).join(', '); }
 
 // ---------- send advice and ship forecast
-const LOADH = 1, BUFH = 3, BEN = 'Benten Station';
+const LOADH = 1, BUFH = 3, BEN = 'Benten Station', ORDER = ['Umbra', 'Katoa'];
+const comboOn = () => !(S().combo === false);
+function legH(a, b) { const k = a + '>' + b; if (S().leg && S().leg[k] != null) return S().leg[k]; const o = observedTimes()[[a, b].sort().join(' ↔ ')]; if (o) return Math.round(o.med * 10) / 10; return 8; }
+const legSrc = (a, b) => (S().leg && S().leg[a + '>' + b] != null) ? 'set' : observedTimes()[[a, b].sort().join(' ↔ ')] ? 'observed' : 'estimate';
 function shipFree(s, sh, now) {
   const arr = sh.arr || (s.t + (sh.etaH || 0) * HR), to = shortLoc(sh.to), at = Math.max(arr, now);
   if (to === BEN) return { t: at, arr, to, back: null };
   return { t: at + flightH(to) * HR, arr, to, back: at + flightH(to) * HR };
 }
+function offsets(stops) { const o = []; let c = 0; stops.forEach((p, i) => { c += i ? legH(stops[i - 1], p) : flightH(p); o.push(c * HR); }); return o; }
 function forecast(s, Hh) {
   const now = Date.now(), E = now + Hh * HR;
   const ships = (s.ships || []).map(sh => { const f = shipFree(s, sh, now); return { r: sh.r, free: f.t, cur: f, runs: [] }; });
-  const bs = s.bases.filter(b => b.inv && incl(b.p)); const nxt = {}, first = {}, info = {};
-  bs.forEach(b => { const pl = planBase(s, b, now, targetD(b.p), true); info[b.p] = { b, pl, tgt: targetD(b.p) }; if (pl.firstNow !== Infinity) { nxt[b.p] = pl.firstNow; first[b.p] = pl; } });
+  const bs = s.bases.filter(b => b.inv); const names = bs.map(b => b.p); const nxt = {}, info = {};
+  bs.forEach(b => { const pl = planBase(s, b, now, targetD(b.p), true); info[b.p] = { b, pl, tgt: targetD(b.p) }; if (pl.firstNow !== Infinity) nxt[b.p] = pl.firstNow; });
+  const units = []; if (comboOn() && ORDER.every(p => names.includes(p))) units.push({ stops: ORDER.slice(), n: 0 }); names.forEach(p => { if (!(units[0] && units[0].stops.includes(p))) units.push({ stops: [p], n: 0 }); });
   const runs = []; let guard = 0;
   while (ships.length && guard++ < 24) {
-    let best = null; Object.keys(nxt).forEach(p => { const sb = nxt[p] - flightH(p) * HR - BUFH * HR; if (!best || sb < best.sb) best = { p, sb }; });
+    let best = null; units.forEach(u => { const off = offsets(u.stops); let sb = Infinity; u.stops.forEach((p, i) => { if (nxt[p] != null) sb = Math.min(sb, nxt[p] - off[i] - BUFH * HR); }); if (sb !== Infinity && (!best || sb < best.sb)) best = { u, sb, off }; });
     if (!best || best.sb > E) break;
-    const p = best.p, sh = ships.reduce((a, c) => c.free < a.free ? c : a), earliest = Math.max(now, sh.free + LOADH * HR), sb = best.sb;
-    const dep = Math.max(earliest, sb), f = flightH(p), nth = runs.filter(r => r.p === p).length;
-    const run = { p, ship: sh.r, earliest, sendBy: sb, dep, arr: dep + f * HR, deadline: nxt[p], slack: (sb - earliest) / HR, lateH: Math.max(0, (dep + f * HR - nxt[p]) / HR), est: nth > 0, mat: nth === 0 && first[p] ? first[p].mats[0].t : null };
-    runs.push(run); sh.runs.push(run); sh.free = dep + 2 * f * HR;
-    nxt[p] = nth === 0 ? Math.max(info[p].pl.lastsTo === Infinity ? Infinity : planBase(s, info[p].b, dep, info[p].tgt, true).lastsTo, run.arr) : nxt[p] + info[p].tgt * DAY;
-    if (nxt[p] === Infinity || nxt[p] <= run.deadline) delete nxt[p];
+    const u = best.u, sb = best.sb, off = best.off, sh = ships.reduce((a, c) => c.free < a.free ? c : a), earliest = Math.max(now, sh.free + LOADH * HR), dep = Math.max(earliest, sb);
+    const stops = u.stops.map((p, i) => { const arr = dep + off[i], dl = nxt[p] != null ? nxt[p] : null; return { p, arr, dl, downH: dl != null ? Math.max(0, (arr - dl) / HR) : 0, mat: u.n === 0 ? info[p].pl.mats[0].t : null }; });
+    const last = stops[stops.length - 1], ret = last.arr + flightH(last.p) * HR;
+    const run = { label: u.stops.join(' → '), stops, ship: sh.r, earliest, sendBy: sb, dep, ret, slack: (sb - earliest) / HR, lateH: Math.max(...stops.map(x => x.downH)), est: u.n > 0 };
+    runs.push(run); sh.runs.push(run); sh.free = ret;
+    stops.forEach(x => { const old = nxt[x.p]; let nx = u.n === 0 ? planBase(s, info[x.p].b, x.arr - flightH(x.p) * HR, info[x.p].tgt, true, x.arr).lastsTo : (old != null ? old : x.arr) + info[x.p].tgt * DAY; if (nx === Infinity || nx <= (old != null ? old : 0)) delete nxt[x.p]; else nxt[x.p] = nx; });
+    u.n++;
   }
-  return { now, E, ships, runs, info, first };
+  return { now, E, ships, runs, info };
 }
 const lt = t => hhmm(((t / HR) % 24) + tzOff());
+const arrOf = (r, p) => { const x = r.stops.find(y => y.p === p); return x ? x.arr : null; };
 function forecastSvg(s, F, Hh) {
   const W = 700, L = 64, rowH = 34, now = F.now, E = F.E, X = t => L + Math.min(Math.max(t - now, 0), E - now) / (E - now) * (W - L - 8);
   const baseKeys = Object.keys(F.info); const H = (F.ships.length + baseKeys.length) * rowH + 40; let g = '';
@@ -1057,29 +1064,35 @@ function forecastSvg(s, F, Hh) {
   F.ships.forEach(sh => { const y = 8 + i++ * rowH; g += '<text x="2" y="' + (y + 20) + '" font-size="11" fill="currentColor">' + esc(sh.r.replace('AVI-', '')) + '</text>';
     const c = sh.cur; if (c.arr > now) g += '<rect x="' + X(now) + '" y="' + (y + 5) + '" width="' + Math.max(3, X(c.arr) - X(now)) + '" height="20" rx="4" fill="var(--muted)" opacity=".6"><title>' + esc(sh.r + ' on its way to ' + c.to + ', arrives ' + fmtDT(c.arr)) + '</title></rect>';
     if (c.back && c.back > now) g += '<rect x="' + X(Math.max(c.arr, now)) + '" y="' + (y + 5) + '" width="' + Math.max(3, X(c.back) - X(Math.max(c.arr, now))) + '" height="20" rx="4" fill="none" stroke="var(--muted)" stroke-dasharray="3 3"><title>' + esc('Back at Benten about ' + fmtDT(c.back)) + '</title></rect>';
-    sh.runs.forEach(r => { const x0 = X(r.dep), x1 = X(r.dep + 2 * flightH(r.p) * HR), col = r.lateH > 0.05 ? 'var(--crit)' : 'var(--accent, #4aa3df)'; g += '<g><title>' + esc(sh.r + ' to ' + r.p + ': leave ' + fmtDT(r.dep) + ', arrive ' + fmtDT(r.arr) + (r.est ? ' (estimate)' : '')) + '</title><rect x="' + x0 + '" y="' + (y + 5) + '" width="' + Math.max(3, x1 - x0) + '" height="20" rx="4" fill="' + col + '" opacity="' + (r.est ? .5 : .9) + '"/>' + (x1 - x0 > 7 * r.p.length ? '<text x="' + (x0 + 5) + '" y="' + (y + 19) + '" font-size="10" fill="#fff">' + esc(r.p) + '</text>' : '') + '</g>'; }); });
+    sh.runs.forEach(r => { const x0 = X(r.dep), x1 = X(r.ret), col = r.lateH > 0.05 ? 'var(--crit)' : 'var(--accent, #4aa3df)'; g += '<g><title>' + esc(sh.r + ' ' + r.label + ': leave ' + fmtDT(r.dep) + ', back ' + fmtDT(r.ret) + (r.est ? ' (estimate)' : '')) + '</title><rect x="' + x0 + '" y="' + (y + 5) + '" width="' + Math.max(3, x1 - x0) + '" height="20" rx="4" fill="' + col + '" opacity="' + (r.est ? .5 : .9) + '"/>' + (x1 - x0 > 6.2 * r.label.length ? '<text x="' + (x0 + 5) + '" y="' + (y + 19) + '" font-size="10" fill="#fff">' + esc(r.label) + '</text>' : '') + '</g>'; }); });
   baseKeys.forEach(p => { const y = 8 + i++ * rowH, d = F.info[p], ro = d.pl.firstNow; g += '<text x="2" y="' + (y + 20) + '" font-size="11" fill="currentColor">' + esc(p.slice(0, 9)) + '</text>';
-    const runs = F.runs.filter(r => r.p === p); let okTo = ro === Infinity ? E : ro; g += '<rect x="' + X(now) + '" y="' + (y + 11) + '" width="' + Math.max(2, X(Math.min(okTo, E)) - X(now)) + '" height="8" rx="3" fill="var(--good)" opacity=".7"><title>' + esc(p + ' has stock until ' + (ro === Infinity ? 'beyond the forecast' : fmtDT(ro))) + '</title></rect>';
-    if (ro < E) { const first = runs[0], gapEnd = first ? Math.min(first.arr, E) : E; if (gapEnd > ro) g += '<rect x="' + X(ro) + '" y="' + (y + 11) + '" width="' + Math.max(2, X(gapEnd) - X(ro)) + '" height="8" rx="3" fill="var(--crit)"><title>' + esc(p + ' short of ' + d.pl.mats[0].t + (first ? ' until the run arrives ' + fmtDT(first.arr) : '')) + '</title></rect>'; }
-    runs.forEach(r => { g += '<rect x="' + X(r.earliest) + '" y="' + (y + 2) + '" width="' + Math.max(2, X(r.sendBy) - X(r.earliest)) + '" height="5" rx="2" fill="var(--warn)" opacity=".8"><title>' + esc('Send window ' + fmtDT(r.earliest) + ' to ' + fmtDT(r.sendBy)) + '</title></rect><path d="M' + X(r.arr) + ' ' + (y + 8) + ' l-5 -7 h10 z" fill="var(--ink, currentColor)"><title>' + esc('Arrives ' + fmtDT(r.arr)) + '</title></path>'; }); });
+    const runs = F.runs.filter(r => arrOf(r, p) != null); g += '<rect x="' + X(now) + '" y="' + (y + 11) + '" width="' + Math.max(2, X(ro === Infinity ? E : Math.min(ro, E)) - X(now)) + '" height="8" rx="3" fill="var(--good)" opacity=".7"><title>' + esc(p + ' has stock until ' + (ro === Infinity ? 'beyond the forecast' : fmtDT(ro))) + '</title></rect>';
+    if (ro < E) { const first = runs[0], gapEnd = first ? Math.min(arrOf(first, p), E) : E; if (gapEnd > ro) g += '<rect x="' + X(ro) + '" y="' + (y + 11) + '" width="' + Math.max(2, X(gapEnd) - X(ro)) + '" height="8" rx="3" fill="var(--crit)"><title>' + esc(p + ' short of ' + d.pl.mats[0].t + (first ? ' until the run arrives ' + fmtDT(arrOf(first, p)) : '')) + '</title></rect>'; }
+    runs.forEach(r => { const a = arrOf(r, p); g += '<rect x="' + X(r.earliest) + '" y="' + (y + 2) + '" width="' + Math.max(2, X(r.sendBy) - X(r.earliest)) + '" height="5" rx="2" fill="var(--warn)" opacity=".8"><title>' + esc('Send window ' + fmtDT(r.earliest) + ' to ' + fmtDT(r.sendBy)) + '</title></rect><path d="M' + X(a) + ' ' + (y + 8) + ' l-5 -7 h10 z" fill="var(--ink, currentColor)"><title>' + esc(p + ' arrival ' + fmtDT(a)) + '</title></path>'; }); });
   return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" role="img" aria-label="Ship forecast">' + g + '</svg><div class="legend"><span><i style="background:var(--muted)"></i>ship on its way</span><span><i style="background:var(--accent,#4aa3df)"></i>planned run (there and back)</span><span><i style="background:var(--good)"></i>base has stock</span><span><i style="background:var(--crit)"></i>short</span><span><i style="background:var(--warn)"></i>send window</span><span>▲ arrival</span></div>';
+}
+function runCard(F, r) {
+  const late = r.lateH > 0.05;
+  const lines = r.stops.map(x => '<div class="sub"><b>' + esc(x.p) + '</b> arrives ' + fmtDT(x.arr) + (x.dl != null ? ' · ' + (x.mat ? esc(x.mat) + ' ' : '') + 'runs short ' + fmtDT(x.dl) + ' · ' + (x.downH > 0.05 ? '<span class="neg">down time about ' + x.downH.toFixed(0) + ' h</span>' : '<span class="pos">no down time</span>') : ' · stock lasts past the forecast') + '</div>').join('');
+  const plan = r.est ? '' : '<button class="act" data-plan="' + r.dep + '|' + esc(r.ship) + '|' + r.stops.map(x => x.p + ':' + x.arr).join(',') + '">Plan this run</button>';
+  return '<div class="runb"><b>' + esc(r.label) + '</b> · ' + (r.est ? 'about ' : 'send by ') + '<b>' + fmtDT(r.sendBy) + '</b> <span class="sub">(' + (r.sendBy <= F.now ? 'already past, send as soon as a ship is ready' : rel(r.sendBy)) + ')</span>' + lines +
+    '<div class="sub">' + esc(r.ship.replace('AVI-', '')) + ' can leave from ' + fmtDT(r.earliest) + (late ? '. <span class="neg">No ship free in time.</span>' : ', so you have ' + Math.max(0, r.slack).toFixed(0) + ' h of room.') + ' Back at Benten about ' + fmtDT(r.ret) + '.</div>' + plan + '</div>';
 }
 function forecastHtml() {
   const s = latest(); if (!s || !(s.ships || []).length) return '';
   const Hh = st.fc || 48, F = forecast(s, Hh);
   const chips = [[24, '24 h'], [48, '48 h'], [72, '3 days'], [168, '7 days']].map(([h, l]) => '<button class="chip" data-fc="' + h + '" aria-pressed="' + (Hh === h) + '">' + l + '</button>').join('');
   const sf = F.ships.map(sh => esc(sh.r.replace('AVI-', '')) + ' ' + (sh.cur.arr > F.now ? 'free at Benten about ' + fmtDT(sh.cur.back || sh.cur.arr) : 'at Benten or on its way back')).join('; ');
-  const first = {}; F.runs.forEach(r => { if (!first[r.p]) first[r.p] = r; });
-  const cards = Object.keys(F.info).map(p => { const d = F.info[p], r = first[p], ro = d.pl.firstNow;
-    if (!r) return '<div class="runb"><b>' + esc(p) + '</b> · ' + (ro === Infinity ? 'stock lasts beyond the forecast' : 'stock lasts until ' + fmtDT(ro) + ' (' + esc(d.pl.mats[0].t) + '), outside this window') + '</div>';
-    const late = r.lateH > 0.05;
-    return '<div class="runb"><b>' + esc(p) + '</b> · send by <b>' + fmtDT(r.sendBy) + '</b> <span class="sub">(' + (r.sendBy <= F.now ? 'already past, send as soon as a ship is ready' : rel(r.sendBy)) + ')</span><div class="sub">' + esc(r.mat || '') + ' runs short ' + fmtDT(r.deadline) + '; flight ' + flightH(p) + ' h, arrives ' + fmtDT(r.arr) + ' if sent then. ' + esc(r.ship.replace('AVI-', '')) + ' can leave from ' + fmtDT(r.earliest) + (late ? '. <span class="neg">No ship free in time: the base is short for about ' + r.lateH.toFixed(0) + ' h.</span>' : ', so you have ' + Math.max(0, r.slack).toFixed(0) + ' h of room.') + '</div><button class="act" data-plan="' + esc(p) + '|' + r.dep + '|' + esc(r.ship) + '">Plan this run</button></div>'; }).join('');
-  const later = F.runs.filter(r => first[r.p] !== r).map(r => esc(r.p) + ' about ' + fmtDT(r.sendBy)).join(', ');
-  return '<div class="panel"><h2>When to send</h2><div class="chips" role="group" aria-label="Forecast length" id="fcchips">' + chips + '</div>' + forecastSvg(s, F, Hh) +
-    '<p class="sub">Ships: ' + sf + '. Each run takes ' + LOADH + ' h to load and ' + BUFH + ' h of safety before a base runs short. Runs go to the base that runs short first and use the ship that is free earliest.</p>' + cards +
-    (later ? '<p class="sub">Further runs in this window (estimates, assuming each delivery covers your target days): ' + later + '.</p>' : '') +
-    '<p class="sub">The forecast uses the last FIO reading of each base and the cargo already on its way. If a base or ship was not opened in the game recently, open it and the numbers sharpen. “Plan this run” fills the Supply tab with this ship and departure time.</p></div>';
+  const names = Object.keys(F.info), has = ORDER.every(p => names.includes(p));
+  const combo = has ? '<div class="row" style="margin:8px 0"><label class="sub"><input type="checkbox" id="combo"' + (comboOn() ? ' checked' : '') + '> Send Umbra and Katoa on one trip (Umbra first)</label>' + (comboOn() ? '<span class="field"><label class="sub" for="legu">Umbra → Katoa hours (' + legSrc('Umbra', 'Katoa') + ')</label><input type="number" class="sm" id="legu" data-leg="Umbra>Katoa" step="0.5" min="0" value="' + legH('Umbra', 'Katoa') + '"></span>' : '') + '</div>' : '';
+  const nowRuns = F.runs.filter(r => !r.est), more = F.runs.filter(r => r.est);
+  const none = names.filter(p => !F.runs.some(r => arrOf(r, p) != null)).map(p => esc(p) + ' ' + (F.info[p].pl.firstNow === Infinity ? 'lasts beyond the forecast' : 'lasts until ' + fmtDT(F.info[p].pl.firstNow))).join(', ');
+  return '<div class="panel"><h2>When to send</h2><div class="chips" role="group" aria-label="Forecast length" id="fcchips">' + chips + '</div>' + combo + forecastSvg(s, F, Hh) +
+    nowRuns.map(r => runCard(F, r)).join('') + (more.length ? '<details class="sub"><summary>Further runs in this window (estimates)</summary>' + more.map(r => runCard(F, r)).join('') + '</details>' : '') +
+    (none ? '<p class="sub">No run needed in this window: ' + none + '.</p>' : '') +
+    '<p class="sub">Ships: ' + sf + '. Send-by = the first time a material runs short, minus the flight time and ' + BUFH + ' h of safety; loading takes ' + LOADH + ' h. A trip with several stops uses the leg times above. The forecast uses the last FIO reading of each base and the cargo already on its way; open a base or ship in the game to sharpen it. “Plan this run” fills the Supply tab with this ship, the departure time and the right arrival times.</p></div>';
 }
+function runBanner() { if (!st.sup.only) return ''; return '<div class="panel"><b>Planning run: ' + st.sup.only.map(esc).join(' → ') + '</b> <span class="sub">from the Ships tab forecast, leaving ' + fmtDT(st.sup.leave) + '</span> <button class="act" data-clearrun="1">Back to normal</button></div>'; }
 function viewShips() {
   const trips = deriveTrips(), now = Date.now(), obs = Object.values(observedTimes()).sort((a, b) => a.a.localeCompare(b.a) || a.b.localeCompare(b.b));
   const known = trips.filter(t => t.dep).length, ships = new Set(trips.map(t => t.r)).size;
@@ -1146,7 +1159,7 @@ const TABS = [['today', 'Today'], ['supply', 'Supply'], ['ships', 'Ships'], ['mo
 function render() {
   const el = document.getElementById('view'); const scroll = window.scrollY;
   document.getElementById('tabs').innerHTML = TABS.map(([k, l]) => '<button class="tab" data-t="' + k + '"' + (k === st.tab ? ' aria-current="page"' : '') + '>' + l + '</button>').join('');
-  el.innerHTML = { today: viewToday, supply: viewSupply, ships: viewShips, money: viewMoney, bases: viewBases, log: viewLog }[st.tab]();
+  el.innerHTML = { today: viewToday, supply: () => runBanner() + viewSupply(), ships: viewShips, money: viewMoney, bases: viewBases, log: viewLog }[st.tab]();
   if (st.tab === 'log') { const c = document.getElementById('coll'); if (c) c.value = COLLECTOR; }
   window.scrollTo(0, scroll);
 }
@@ -1154,7 +1167,8 @@ document.getElementById('tabs').addEventListener('click', e => { const b = e.tar
 const view = document.getElementById('view');
 view.addEventListener('click', async e => {
   const fcb = e.target.closest('[data-fc]'); if (fcb) { st.fc = +fcb.dataset.fc; render(); return; }
-  const pl = e.target.closest('[data-plan]'); if (pl) { const [p, d, r] = pl.dataset.plan.split('|'); st.sup.leave = +d; st.sup.ship = r; st.tab = 'supply'; try { history.replaceState(null, '', '#supply'); } catch (x) {} render(); window.scrollTo(0, 0); return; }
+  const pl = e.target.closest('[data-plan]'); if (pl) { const [d, r, arrs] = pl.dataset.plan.split('|'), a = {}; arrs.split(',').forEach(x => { const [p, v] = x.split(':'); a[p] = +v; }); st.sup.leave = +d; st.sup.ship = r; st.sup.only = Object.keys(a); st.sup.arrOv = { leave: +d, a }; st.tab = 'supply'; try { history.replaceState(null, '', '#supply'); } catch (x) {} render(); window.scrollTo(0, 0); return; }
+  if (e.target.closest('[data-clearrun]')) { st.sup.only = null; st.sup.arrOv = null; st.sup.leave = null; render(); return; }
   const f = e.target.closest('#fchips [data-f]'); if (f) { st.filter = f.dataset.f; render(); return; }
   const id = e.target.id;
   if (id === 'cashsave') { const inp = document.getElementById('cashin'); if (inp.value === '' || !(Number(inp.value) >= 0)) return; const t = Date.now(), cis = Math.round(Number(inp.value)); st.cash.unshift({ t, cis }); await enqueue('cash/c' + t, { t, cis }, 'Cash saved.'); render(); }
@@ -1185,6 +1199,8 @@ view.addEventListener('change', async e => {
     catch (x) { msg.textContent = 'Could not read this file.'; }
     return;
   }
+  if (t.id === 'combo') { await saveSettings({ combo: t.checked }); render(); return; }
+  if (d.leg) { const v = Number(t.value); if (v >= 0) { await saveSettings({ leg: Object.assign({}, S().leg, { [d.leg]: v }) }); render(); } return; }
   if (t.id === 'sort') { st.sortBy = t.value; render(); return; }
   if (t.id === 'ship') { st.sup.ship = t.value; render(); return; }
   if (t.id === 'leavepick') { if (t.value) { st.sup.leave = new Date(t.value).getTime(); render(); } return; }
