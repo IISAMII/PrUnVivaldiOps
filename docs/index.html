@@ -336,13 +336,14 @@ function prodEvents(b, t0, hz) {
     const slots = running.map(o => o.e || t0);
     for (const o of running) if (o.e > t0) for (const [t, a] of Object.entries(o.o || {})) add(t, o.e, a);
     while (slots.length < (l.cap || 1)) slots.push(t0);
+    for (const o of running.filter(o => o.r).sort((x, y) => (x.e || 0) - (y.e || 0))) queue.push(Object.assign({}, o, { av: o.e || t0 }));
     let g = 0;
     while (queue.length && g++ < 3000) {
-      slots.sort((x, y) => x - y); const start = Math.max(slots[0], t0); if (start > hz) break;
-      const o = queue.shift(), dur = o.d || HR;
+      slots.sort((x, y) => x - y); const o = queue.shift(), start = Math.max(slots[0], t0, o.av || 0); if (start > hz) break;
+      const dur = o.d || HR;
       for (const [t, a] of Object.entries(o.i || {})) add(t, start, -a);
       for (const [t, a] of Object.entries(o.o || {})) add(t, start + dur, a);
-      slots[0] = start + dur; if (o.r) queue.push(o);
+      slots[0] = start + dur; if (o.r) queue.push(Object.assign({}, o, { av: start + dur }));
     }
   }
   return ev;
