@@ -249,7 +249,9 @@ function enqueue(path, data, okMsg) {
 const S = () => st.settings;
 let OBS = {};
 const claimH = p => (p && OBS[p] && OBS[p].est != null && OBS[p].widthMin <= 60) ? OBS[p].est : ((p && S().claim && S().claim[p] != null) ? S().claim[p] : (S().claimH == null ? 6.25 : S().claimH));
-function claimNote(k) { const o = OBS[k]; if (!o || !(o.pos + o.neg)) return ''; const seen = o.pos + ' claim' + (o.pos === 1 ? '' : 's') + ' and ' + o.neg + ' quiet period' + (o.neg === 1 ? '' : 's') + ' seen'; if (o.conflict) return '<p class="sub">Observations disagree (' + seen + '). Your setting is used.</p>'; if (o.est != null && o.widthMin <= 60) return '<p class="sub">Seen in the data: ' + hhmm(o.est + tzOff()) + ' (about ' + Math.max(1, Math.round(o.widthMin / 2)) + ' min either way, ' + seen + '). Used instead of your setting.</p>'; if (o.arcs && o.arcs.length === 1) return '<p class="sub">Seen so far: between ' + hhmm(o.arcs[0][0] / 60 + tzOff()) + ' and ' + hhmm((o.arcs[0][1] + 1) / 60 + tzOff()) + ' (' + seen + '). Narrows when FIO gets fresh data around the claim.</p>'; return '<p class="sub">Not enough observations yet (' + seen + ').</p>'; }
+const claimSure = p => !!(p && OBS[p] && OBS[p].est != null && OBS[p].widthMin <= 60);
+function claimCands(p) { const base = claimH(p), o = OBS[p], c = [base]; if (!claimSure(p) && o && o.arcs && o.arcs.length === 1) { c.push(o.arcs[0][0] / 60, ((o.arcs[0][1] + 1) / 60) % 24); } return c.map(x => Math.round(x * 100) / 100).filter((x, i, a) => a.indexOf(x) === i); }
+function claimNote(k) { const o = OBS[k]; if (!o || !(o.pos + o.neg)) return ''; const seen = o.pos + ' claim' + (o.pos === 1 ? '' : 's') + ' and ' + o.neg + ' quiet period' + (o.neg === 1 ? '' : 's') + ' seen'; if (o.conflict) return '<p class="sub">Observations disagree (' + seen + '). Your setting is used.</p>'; if (claimSure(k)) return '<p class="sub">Seen in the data: ' + hhmm(o.est + tzOff()) + ' (about ' + Math.max(1, Math.round(o.widthMin / 2)) + ' min either way, ' + seen + '). Used instead of your setting.</p>'; if (o.arcs && o.arcs.length === 1) return '<p class="sub">Not confirmed yet: seen between ' + hhmm(o.arcs[0][0] / 60 + tzOff()) + ' and ' + hhmm((o.arcs[0][1] + 1) / 60 + tzOff()) + ' (' + seen + '). The amounts are sized for the worst case in that range.</p>'; return '<p class="sub">Not enough observations yet (' + seen + ').</p>'; }
 const flightH = p => { if (S().flight && S().flight[p] != null) return S().flight[p]; const o = observedFlight(p); if (o != null) return Math.round(o * 100) / 100; return DEF_FLIGHT[p] != null ? DEF_FLIGHT[p] : 6; };
 const flightSrc = p => (S().flight && S().flight[p] != null) ? 'set' : (observedFlight(p) != null ? 'observed' : 'default');
 const targetD = p => (S().target && S().target[p] != null) ? S().target[p] : (S().defTarget || 2.5);
@@ -323,7 +325,7 @@ function freshPanel(s) {
 const tzOff = () => { const d = new Date(), f = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(d); const h = +f.find(x => x.type === 'hour').value, m = +f.find(x => x.type === 'minute').value; let diff = (h + m / 60) - (d.getUTCHours() + d.getUTCMinutes() / 60); if (diff > 12) diff -= 24; if (diff < -12) diff += 24; return diff; };
 const hhmm = h => { const x = ((Math.round(h * 60) % 1440) + 1440) % 1440; return String(Math.floor(x / 60)).padStart(2, '0') + ':' + String(x % 60).padStart(2, '0'); };
 const claimLocal = p => hhmm(claimH(p) + tzOff());
-function claimsIn(a, b, p) { const off = claimH(p) * HR, out = []; for (let t = (Math.floor((a - off) / DAY) + 1) * DAY + off; t <= b; t += DAY) out.push(t); return out; }
+function claimsIn(a, b, p, h) { const off = (h != null ? h : claimH(p)) * HR, out = []; for (let t = (Math.floor((a - off) / DAY) + 1) * DAY + off; t <= b; t += DAY) out.push(t); return out; }
 function prodEvents(b, t0, hz) {
   const ev = {}, add = (t, time, d) => { (ev[t] = ev[t] || []).push([time, d]); };
   for (const l of b.lines || []) {
@@ -342,10 +344,18 @@ function prodEvents(b, t0, hz) {
   }
   return ev;
 }
-function baseSim(b, now) { const t0 = Math.min(now, new Date(b.upd).getTime()), hz = now + 16 * DAY; return { b, t0, hz, ev: prodEvents(b, t0, hz), c: {} }; }
+const simMemo = new Map();
+function baseSim(b, now, h) {
+  const cl = h != null ? h : claimH(b.p), s0 = (typeof latest === 'function') ? latest() : null, key = b.p + '|' + b.upd + '|' + Math.floor(now / 6e4) + '|' + cl + '|' + (s0 ? s0.t : 0);
+  if (simMemo.has(key)) return simMemo.get(key); if (simMemo.size > 300) simMemo.clear();
+  const t0 = Math.min(now, new Date(b.upd).getTime()), hz = now + 16 * DAY, ev = prodEvents(b, t0, hz);
+  // cargo of ships on their way to this base arrives at the ship's arrival time
+  if (s0) (s0.ships || []).forEach(sh => { const arr = sh.arr || (s0.t + (sh.etaH || 0) * HR); if (arr > now && sh.to && shortLoc(sh.to) === b.p) Object.entries(sh.cargo || {}).forEach(([t, n]) => { (ev[t] = ev[t] || []).push([arr, n]); }); });
+  const sim = { b, t0, hz, ev, c: {}, cl }; simMemo.set(key, sim); return sim;
+}
 function ser(sim, t) {
   if (sim.c[t]) return sim.c[t];
-  const a = (sim.ev[t] || []).slice(); const w = (sim.b.wf || {})[t]; if (w) claimsIn(sim.t0, sim.hz, sim.b.p).forEach(c => a.push([c, -w]));
+  const a = (sim.ev[t] || []).slice(); const w = (sim.b.wf || {})[t]; if (w) claimsIn(sim.t0, sim.hz, sim.b.p, sim.cl).forEach(c => a.push([c, -w]));
   a.sort((x, y) => x[0] - y[0]); const s0 = (sim.b.inv || {})[t] || 0; let bal = s0; const T = [], B = [];
   for (const [te, d] of a) { bal += d; T.push(te); B.push(bal); }
   return sim.c[t] = { T, B, s0 };
@@ -368,6 +378,7 @@ function runouts(b, now) { const sim = baseSim(b, now); const rows = usedTickers
 function alertsFor(s) {
   const A = []; const now = Date.now();
   const add = (k, tag, text, small) => A.push({ k, tag, text, small });
+  if (s.t && now - s.t > 2.5 * HR) add('warn', 'Job', 'No new snapshot for ' + ageText(now - s.t), 'The automatic snapshot job normally runs every 30 minutes. This is about the job itself, not FIO data. Check the Actions tab of the repo.');
   s.bases.forEach(b => {
     if (!b.inv) return; const { rows } = runouts(b, now); const f = rows[0];
     if (f && f.ro !== Infinity) {
@@ -427,10 +438,10 @@ function planSupply(s, tgtOf) {
   const now = Date.now(), leave = Math.max(now, st.sup.leave || now);
   const bases = s.bases.map(b => {
     const on = incl(b.p), tgt = tgtOf ? tgtOf(b.p) : targetD(b.p); const arrT = leave + flightH(b.p) * HR, endT = arrT + tgt * DAY;
-    const sim = baseSim(b, now), mats = []; let tons = 0, vol = 0, value = 0, firstNow = Infinity, lastsTo = Infinity;
+    const sims = claimCands(b.p).map(h => baseSim(b, now, h)), sim = sims[0], mats = []; let tons = 0, vol = 0, value = 0, firstNow = Infinity, lastsTo = Infinity;
     usedTickers(b).forEach(t => {
       const stNow = Math.max(0, stockAt(sim, t, now)), ro = firstShort(sim, t, now), onArr = Math.max(0, stockAt(sim, t, arrT));
-      const need = on ? needFor(sim, t, arrT, endT) : 0, after = need ? firstShort(sim, t, arrT, need) : ro;
+      const need = on ? Math.max(...sims.map(m => needFor(m, t, arrT, endT))) : 0, after = need ? Math.min(...sims.map(m => firstShort(m, t, arrT, need))) : ro;
       const w = MATS[t] || [0, 0]; if (need) { tons += need * w[0]; vol += need * w[1]; value += need * pask(s.px, t); }
       firstNow = Math.min(firstNow, ro); if (need || on) lastsTo = Math.min(lastsTo, after);
       mats.push({ t, stNow, ro, onArr, need, after });
@@ -550,7 +561,7 @@ function viewSupply() {
   const rows = pl.bases.map(x => {
     const k = x.b.p;
     return '<div class="bc ' + (x.on ? '' : 'off') + '"><div class="row" style="justify-content:space-between"><label class="row"><input type="checkbox" data-inc="' + esc(k) + '"' + (x.on ? ' checked' : '') + ' aria-label="Include ' + esc(k) + '"><b style="font-size:17px">' + esc(k) + '</b></label><span class="n">' + (x.on ? num(x.tons) + ' t · ' + num(x.vol) + ' m³ · ' + money(x.value) : 'not included') + '</span></div>' +
-      '<div class="row"><div class="field"><label class="sub" for="fl-' + esc(k) + '">Flight hours' + (flightSrc(k) === 'observed' ? ' (observed)' : '') + '</label><input type="number" class="sm" id="fl-' + esc(k) + '" data-fl="' + esc(k) + '" step="0.5" min="0" value="' + flightH(k) + '"></div>' +
+      '<div class="row"><div class="field"><label class="sub" for="fl-' + esc(k) + '">Flight hours' + (flightSrc(k) === 'observed' ? ' (observed)' : flightSrc(k) === 'set' && observedFlight(k) != null ? ' (yours, observed ' + observedFlight(k).toFixed(1) + ')' : '') + '</label><input type="number" class="sm" id="fl-' + esc(k) + '" data-fl="' + esc(k) + '" step="0.5" min="0" value="' + flightH(k) + '">' + (flightSrc(k) === 'set' && observedFlight(k) != null ? '<button class="act plain" data-flreset="' + esc(k) + '">Use observed</button>' : '') + '</div>' +
       '<div class="field"><label class="sub" for="tg-' + esc(k) + '">Target days</label><input type="number" class="sm" id="tg-' + esc(k) + '" data-tg="' + esc(k) + '" step="0.1" min="0.5" value="' + x.tgt + '"></div><div class="field"><label class="sub" for="cl-' + esc(k) + '">Workers claim (your time)</label><input type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="sm" id="cl-' + esc(k) + '" data-cl="' + esc(k) + '" value="' + claimLocal(k) + '"></div></div>' + claimNote(k) +
       '<div class="kv"><div><span>Arrives</span><b class="when">' + fmtDT(x.arrT) + '</b></div><div><span>Runs out without delivery</span><b class="when ' + (x.early ? 'critc' : '') + '">' + fmtDT(x.firstNow) + '</b>' + (x.early ? '<span class="critc">before arrival</span>' : '') + '</div><div><span>Lasts until with delivery</span><b class="when">' + (x.on ? fmtDT(x.lastsTo) : '–') + '</b></div></div></div>';
   }).join('');
@@ -966,7 +977,7 @@ function viewLog() {
   const cashRows = st.cash.slice(0, 8).map(c => '<tr><td>' + fmtDT(c.t) + '</td><td class="n">' + num(c.cis) + '</td></tr>').join('');
   return '<div class="cols"><div><div class="panel"><h2>Snapshots</h2>' + (rows ? '<div class="tablewrap"><table><thead><tr><th>Taken</th><th>Format</th><th>Net worth</th><th>Debt</th><th>Trades</th></tr></thead><tbody>' + rows + '</tbody></table></div><p class="sub">* excludes cash, no cash entry yet.</p>' : '<p class="sub">None yet.</p>') + '</div>' +
     '<div class="panel"><h2>Cash entries</h2>' + (cashRows ? '<div class="tablewrap"><table><thead><tr><th>Entered</th><th>CIS</th></tr></thead><tbody>' + cashRows + '</tbody></table></div>' : '<p class="sub">None yet. Enter cash on the Today tab.</p>') + '</div></div>' +
-    '<div><div class="panel"><h2>Import XIT export</h2><p>Gives the real daily cash and equity history from the game: the Refined PrUn user data export (the .json file you saved). Choose it here and the Money tab uses it. Repeat about weekly.</p><div class="row"><input type="file" id="xitfile" accept=".json,application/json" aria-label="XIT export file"><span class="sub" id="xitmsg"></span></div>' + (st.finch.length ? '<p class="sub">Imported: ' + st.finch.length + ' days, last ' + fmtDT(st.finch[st.finch.length - 1].t) + '.</p>' : '') + '</div><div class="panel"><h2>Automatic snapshots</h2><p>A job on GitHub takes a snapshot about every 30 minutes, with or without your PC. FIO only updates when you open things in the game, so the data can still be hours old. To run one right now, open the <a href="https://github.com/IISAMII/PrUnVivaldiOps/actions/workflows/snapshot.yml" target="_blank" rel="noopener">snapshot job</a> and press Run workflow.</p></div><div class="panel"><h2>Saving changes</h2><p>Settings, cash entries and notes are saved into the GitHub repo. That needs a token, kept only in this browser. Create a fine-grained token at github.com/settings/personal-access-tokens/new for the repo PrUnVivaldiOps only, with Contents: Read and write.</p><label class="lbl" for="ghtoken">GitHub token</label><div class="row"><input type="password" id="ghtoken" autocomplete="off" placeholder="github_pat_..." aria-label="GitHub token"><button class="act" id="ghsave">Save token</button><button class="act plain" id="ghclear">Remove</button></div><p class="sub" id="ghmsg">' + (localStorage.getItem('opsToken') ? 'A token is stored in this browser.' : 'No token stored. Changes cannot be saved.') + '</p></div></div></div>';
+    '<div><div class="panel"><h2>Import XIT export</h2><p>Gives the real daily cash and equity history from the game: the Refined PrUn user data export (the .json file you saved). Choose it here and the Money tab uses it. Repeat about weekly.</p><div class="row"><input type="file" id="xitfile" accept=".json,application/json" aria-label="XIT export file"><span class="sub" id="xitmsg"></span></div>' + (st.finch.length ? '<p class="sub">Imported: ' + st.finch.length + ' days, last ' + fmtDT(st.finch[st.finch.length - 1].t) + '.</p>' : '') + '</div><div class="panel"><h2>Automatic snapshots</h2><p>A job on GitHub takes a snapshot about every 30 minutes, with or without your PC. FIO only updates when you open things in the game, so the data can still be hours old. To run one right now, open the <a href="https://github.com/IISAMII/PrUnVivaldiOps/actions/workflows/snapshot.yml" target="_blank" rel="noopener">snapshot job</a> and press Run workflow.</p></div><div class="panel"><h2>Saving changes</h2><p>Settings, cash entries and notes are saved into the GitHub repo. That needs a token, kept only in this browser. Create a fine-grained token at github.com/settings/personal-access-tokens/new for the repo PrUnVivaldiOps only, with Contents: Read and write.</p><label class="lbl" for="ghtoken">GitHub token</label><div class="row"><input type="password" id="ghtoken" autocomplete="off" placeholder="github_pat_..." aria-label="GitHub token"><button class="act" id="ghsave">Save token</button><button class="act plain" id="ghclear">Remove</button></div><p class="sub" id="ghmsg">' + (localStorage.getItem('opsToken') ? 'A token is stored in this browser.' : 'No token stored. Changes cannot be saved.') + '</p><div class="panel"><h2>Import old history</h2><p>Paste the history exported from the old Vivaldi Ops page on claude.ai (Log tab, Export history). It adds the earlier snapshots and trips.</p><textarea id="histtxt" rows="4" placeholder="[{&quot;v&quot;:2,...}]"></textarea><div class="row" style="margin-top:6px"><button class="act" id="histimp">Import</button><span class="sub" id="histmsg"></span></div></div></div></div></div>';
 }
 
 // ---------- ships
@@ -990,11 +1001,11 @@ const tripKind = tr => { const sp = tr.split || { S: 0, P: 0, O: 0 }, t = sp.S +
 let _obs = null;
 function observedTimes() {
   const key = st.snaps.length + '|' + ((st.snaps[0] || {}).t || 0); if (_obs && _obs.key === key) return _obs.map;
-  const m = {}; deriveTrips().forEach(tr => { if (!tr.dep || !tr.arr) return; const a = shortLoc(tr.from), b = shortLoc(tr.to), k = [a, b].sort().join(' ↔ '); (m[k] = m[k] || { a: [a, b].sort()[0], b: [a, b].sort()[1], h: [] }).h.push((tr.arr - tr.dep) / HR); });
-  Object.values(m).forEach(x => { const s = x.h.slice().sort((p, q) => p - q); x.med = s[Math.floor(s.length / 2)]; x.n = s.length; });
+  const m = {}; deriveTrips().forEach(tr => { if (!tr.dep || !tr.arr) return; const a = shortLoc(tr.from), b = shortLoc(tr.to), k = [a, b].sort().join(' ↔ '); const x = (m[k] = m[k] || { a: [a, b].sort()[0], b: [a, b].sort()[1], h: [], ho: [] }); x.h.push((tr.arr - tr.dep) / HR); if (a === 'Benten Station') x.ho.push((tr.arr - tr.dep) / HR); });
+  Object.values(m).forEach(x => { const s = x.h.slice().sort((p, q) => p - q); x.med = s[Math.floor(s.length / 2)]; x.n = s.length; const so = (x.ho || []).slice().sort((p, q) => p - q); x.medOut = so.length ? so[Math.floor(so.length / 2)] : null; });
   _obs = { key, map: m }; return m;
 }
-const observedFlight = p => { const m = observedTimes(); const x = Object.values(m).find(y => (y.a === 'Benten Station' && y.b === p) || (y.b === 'Benten Station' && y.a === p)); return x ? x.med : null; };
+const observedFlight = p => { const m = observedTimes(); const x = Object.values(m).find(y => (y.a === 'Benten Station' && y.b === p) || (y.b === 'Benten Station' && y.a === p)); return x ? (x.medOut != null ? x.medOut : x.med) : null; };
 function timelineSvg(trips) {
   const T = trips.filter(t => t.arr); if (!T.length) return ''; const ships = [...new Set(T.map(t => t.r))].sort();
   const now = Date.now(), t1 = Math.max(now + 6 * HR, ...T.map(t => t.arr)), t0 = Math.min(...T.map(t => t.dep || (t.arr - 10 * HR))) - 2 * HR, W = 700, L = 70, rowH = 46, H = ships.length * rowH + 30, X = t => L + (t - t0) / (t1 - t0) * (W - L - 8);
@@ -1083,6 +1094,7 @@ view.addEventListener('click', async e => {
   const f = e.target.closest('#fchips [data-f]'); if (f) { st.filter = f.dataset.f; render(); return; }
   const id = e.target.id;
   if (id === 'cashsave') { const inp = document.getElementById('cashin'); if (inp.value === '' || !(Number(inp.value) >= 0)) return; const t = Date.now(), cis = Math.round(Number(inp.value)); st.cash.unshift({ t, cis }); await enqueue('cash/c' + t, { t, cis }, 'Cash saved.'); render(); }
+  const fr = e.target.closest('[data-flreset]'); if (fr) { const f = Object.assign({}, S().flight); delete f[fr.dataset.flreset]; await saveSettings({ flight: f }); render(); return; }
   const ad = e.target.closest('[data-adjdel]'); if (ad) { const t = Number(ad.dataset.adjdel); st.adj = st.adj.filter(a => a.t !== t); if (db) { try { await db.doc('adjust/a' + t).delete(); setSync('Removed.'); } catch (x) { setSync('Could not remove.'); } } render(); return; }
   if (id === 'kitgo') { st.kit = document.getElementById('kitin').value; render(); return; }
   if (id === 'kitclear') { st.kit = ''; render(); return; }
@@ -1141,7 +1153,7 @@ render();
     for (let i = 0; i < 3; i++) {
       const r = await fetch('https://api.github.com/repos/' + REPO + '/contents/docs/data/' + file + '?ref=main', { headers: { Authorization: 'Bearer ' + TOK(), Accept: 'application/vnd.github+json' }, cache: 'no-store' });
       if (!r.ok) throw { code: 'read ' + r.status }; const j = await r.json();
-      const cur = JSON.parse(decodeURIComponent(escape(atob(j.content.replace(/\n/g, ''))))); const next = fn(cur);
+      let cur; if (j.content) cur = JSON.parse(decodeURIComponent(escape(atob(j.content.replace(/\n/g, ''))))); else { const rr = await GH('GET', file); cur = await rr.json(); } const next = fn(cur);
       const put = await GH('PUT', file, { message: msg, content: btoa(unescape(encodeURIComponent(JSON.stringify(next)))), sha: j.sha, branch: 'main' });
       if (put.ok) return; if (put.status !== 409 && put.status !== 422) throw { code: 'write ' + put.status };
     } throw { code: 'conflict' };
@@ -1158,7 +1170,11 @@ render();
   }
   db = { doc: path => ({ set: d => persist(path, d), delete: () => persist(path, null) }) };
   document.addEventListener('click', async e => {
-    const id = e.target && e.target.id; if (id !== 'ghsave' && id !== 'ghclear') return; const m = document.getElementById('ghmsg');
+    const id = e.target && e.target.id;
+    if (id === 'histimp') { const m = document.getElementById('histmsg'); let arr; try { arr = JSON.parse(document.getElementById('histtxt').value); if (!Array.isArray(arr) || !arr.every(x => x && x.t && x.bases)) throw 0; } catch (x) { m.textContent = 'That is not an exported history.'; return; }
+      if (!TOK()) { m.textContent = 'Add a GitHub token first (box above).'; return; } m.textContent = 'Importing...';
+      try { await ghUpdate('history.json', cur => { const have = new Set(cur.map(x => x.t)); return cur.concat(arr.filter(x => !have.has(x.t))).sort((a, b) => b.t - a.t); }, 'Import old history'); st.snaps = st.snaps.concat(arr.filter(x => !st.snaps.some(y => y.t === x.t))).sort((a, b) => b.t - a.t); m.textContent = arr.length + ' snapshots imported.'; render(); } catch (x) { m.textContent = 'Could not import (' + ((x && x.code) || 'error') + ').'; } return; }
+    if (id !== 'ghsave' && id !== 'ghclear') return; const m = document.getElementById('ghmsg');
     if (id === 'ghclear') { try { localStorage.removeItem('opsToken'); } catch (x) {} m.textContent = 'Token removed.'; return; }
     const v = document.getElementById('ghtoken').value.trim(); if (!v) return;
     try { localStorage.setItem('opsToken', v); } catch (x) { m.textContent = 'This browser blocks storage.'; return; }

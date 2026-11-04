@@ -43,7 +43,7 @@ function addAlert(alerts, a, now) {
   catch (e) {
     console.log('snapshot failed:', e.message);
     const recent = alerts.some(x => x.key === 'run-fail' && now - x.t < 6 * HR);
-    if (!recent) alerts.unshift({ t: now, level: 'list', kind: 'run', key: 'run-fail', text: 'Snapshot job failed: ' + String(e.message).slice(0, 160), snapT: now });
+    if (!recent) { const msg = 'Snapshot job failed: ' + String(e.message).slice(0, 160); alerts.unshift({ t: now, level: 'push', kind: 'run', key: 'run-fail', text: msg, snapT: now }); await push(msg + '. Stale FIO data does not cause this; check the key or the Actions tab.'); }
     wr('alerts.json', alerts.slice(0, 80)); return;
   }
   const settings0 = rd('settings.json', {}), meta = rd('meta.json', null);
