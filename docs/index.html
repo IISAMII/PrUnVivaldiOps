@@ -200,7 +200,7 @@ const WT = ['P','S','T','E','Sc'];
 const XIT = [ { t: Date.UTC(2026,9,11,12), v: 2160000 }, { t: Date.UTC(2026,9,18,12), v: 3260000 }, { t: Date.UTC(2026,9,19,17), v: 3560000 } ];
 const TZ = 'Europe/Amsterdam', DAY = 864e5, HR = 36e5;
 const LT = { plasticsPrinterFacility: 'PPF', weavingPlant: 'WPL', farm: 'FRM', fermentationFacility: 'FER', chemPlant: 'CHP', polymerPlant: 'POL', incinerator: 'INC' };
-const DEF_FLIGHT = { Katoa: 6, Umbra: 12, Milliways: 4.5, Nemesis: 8.5 };
+const DEF_FLIGHT = { Katoa: 6, Umbra: 4.5, Milliways: 4.5, Nemesis: 8.5 };
 const P = OPS.prices;
 const ask_ = t => P[t] && P[t][0], ask = t => P[t] && P[t][0], bid = t => P[t] && P[t][1], v7 = t => (P[t] && (P[t][2] || P[t][0])) || 0, t7 = t => P[t] && P[t][4];
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -996,7 +996,7 @@ function viewLog() {
 // ---------- ships
 const shortLoc = x => { if (!x) return '–'; const parts = String(x).split(' - '); let l = parts[parts.length - 1] || x; if (/^station$/i.test(l.trim()) || /station/i.test(l)) return 'Benten Station'; return l.replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s*-?\s*orbit\s*$/i, '').trim() || x; };
 // FIO lists the Umbra/Katoa run as a flight to "Kichijo (UV-072) - ORBIT": treat it as an Umbra -> Katoa trip
-const kichH = () => (S().kich != null ? S().kich : 3);
+const kichH = () => (S().kich != null ? S().kich : 2.5);
 const isRunDest = x => /UV-072/.test(String(x || ''));
 function enrouteTo(s, sh, name) {
   const arr0 = sh.arr || (s.t + (sh.etaH || 0) * HR), to = shortLoc(sh.to);
