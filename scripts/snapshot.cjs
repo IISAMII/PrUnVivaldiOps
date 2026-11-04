@@ -39,7 +39,9 @@ function addAlert(alerts, a, now) {
   if (process.env.TEST_PUSH === 'true') await push('Test message from Vivaldi Ops. If you see this, phone alerts work.');
   const KEY = process.env.FIO_KEY;
   let s; const meta = rd('meta.json', null);
-  try { if (!KEY) throw new Error('FIO_KEY secret missing'); s = await opsSnapshot(KEY, USER); }
+  try { if (!KEY) throw new Error('FIO_KEY secret missing'); s = await opsSnapshot(KEY, USER);
+    const prevN = meta && meta.bases ? Object.keys(meta.bases).length : 0;
+    if (!s.bases || !s.bases.length || s.bases.some(b => !b.p || !b.nB) || s.bases.length < prevN) throw new Error('FIO returned incomplete base data (' + (s.bases || []).length + ' of ' + prevN + ' bases), snapshot discarded'); }
   catch (e) {
     console.log('snapshot failed:', e.message);
     const recent = alerts.some(x => x.key === 'run-fail' && now - x.t < 6 * HR);
