@@ -34,7 +34,8 @@ function addAlert(alerts, a, now) {
 }
 
 (async () => {
-  const now = Date.now(); const alerts = rd('alerts.json', []); let newPush = [];
+  const now = Date.now(); const alerts = rd('alerts.json', []).filter(x => !(x.key === 'run-fail' && /secret missing/.test(x.text))); let newPush = [];
+  if (process.env.TEST_PUSH === 'true') await push('Test message from Vivaldi Ops. If you see this, phone alerts work.');
   const KEY = process.env.FIO_KEY;
   let s;
   try { if (!KEY) throw new Error('FIO_KEY secret missing'); s = await opsSnapshot(KEY, USER); }
