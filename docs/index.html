@@ -1312,7 +1312,7 @@ render();
     const r = await GH('GET', 'settings.json'); m.textContent = r.ok ? 'Token works and is stored. Changes are now saved.' : 'GitHub refused it (' + r.status + '). Check the repo and the Contents permission.'; if (!r.ok) { try { localStorage.removeItem('opsToken'); } catch (x) {} }
   });
   setSync('Loading data...');
-  const [latest, hist, alerts, settings, cash, adjust, bases, finch, claimsObs] = await Promise.all([getJ('latest.json', null), getJ('history.json', []), getJ('alerts.json', []), getJ('settings.json', {}, 1), getJ('cash.json', [], 1), getJ('adjust.json', [], 1), getJ('bases.json', {}, 1), getJ('finch.json', { rows: [] }, 1), getJ('claims.json', {})]);
+  const [latest, hist, alerts, settings, cash, adjust, bases, finch, claimsObs] = await Promise.all([getJ('latest.json', null, 1), getJ('history.json', [], 1), getJ('alerts.json', [], 1), getJ('settings.json', {}, 1), getJ('cash.json', [], 1), getJ('adjust.json', [], 1), getJ('bases.json', {}, 1), getJ('finch.json', { rows: [] }, 1), getJ('claims.json', {})]);
   st.snaps = (latest ? [latest] : []).concat((hist || []).filter(x => !latest || x.t !== latest.t)).sort((a, b) => b.t - a.t);
   st.alerts = (alerts || []).slice().sort((a, b) => b.t - a.t).slice(0, 40); st.cash = (cash || []).slice().sort((a, b) => b.t - a.t); st.adj = (adjust || []).slice().sort((a, b) => b.t - a.t);
   OBS = claimsObs || {}; st.saved = bases || {}; st.finch = (finch && finch.rows) || []; st.settings = settings || {};
