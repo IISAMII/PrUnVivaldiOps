@@ -2,6 +2,9 @@ name: plans
 # Copies the PRUNplanner plans into docs/data/plans.json (started by the auto timer, or by hand)
 on:
   workflow_dispatch:
+    inputs:
+      probe:
+        default: plansync
 permissions:
   contents: write
 concurrency:
@@ -18,7 +21,8 @@ jobs:
       - name: Read plans
         env:
           PRUNPLANNER_KEY: ${{ secrets.PRUNPLANNER_KEY }}
-        run: node scripts/plansync.cjs
+          PROBE: ${{ inputs.probe }}
+        run: node scripts/${PROBE:-plansync}.cjs
       - name: Save
         run: |
           git config user.name "ops-bot"; git config user.email "ops-bot@users.noreply.github.com"
