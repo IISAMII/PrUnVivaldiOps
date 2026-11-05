@@ -42,7 +42,7 @@ function watch(s, prev, settings, now) {
       const soon = [];
       ro.slice(0, 6).forEach(r => {
         const hrs = (r.ro - now) / HR; if (hrs > 24) return;
-        const covered = (s.ships || []).some(sh => sh.etaH > 0 && String(sh.to || '').includes(b.p) && (sh.cargo || {})[r.t] > 0 && (s.t + sh.etaH * HR) <= r.ro);
+        const covered = (s.ships || []).some(sh => sh.etaH > 0 && (String(sh.to || '').includes(b.p) || (!/benten/i.test(String(sh.to || '')) && b.nid && String(sh.to || '').includes('(' + b.nid.replace(/[a-z]$/i, '') + ')')) || (/UV-072/.test(String(sh.to || '')) && (b.p === 'Umbra' || b.p === 'Katoa'))) && (sh.cargo || {})[r.t] > 0 && (s.t + sh.etaH * HR) <= r.ro);
         if (covered) return;
         if (hrs <= 5) { if (age <= 8 * HR) push('push', 'supply', 'supply|' + b.p + '|' + r.t, b.p + ': ' + r.t + ' runs out ' + fmt(r.ro) + (hrs > 0 ? ' (in ' + hrs.toFixed(1) + ' h)' : ' (now)') + ', nothing on the way'); else push('list', 'supply', 'supply|' + b.p + '|' + r.t, b.p + ': ' + r.t + ' may run out ' + fmt(r.ro) + ', but the base data is ' + Math.round(age / HR) + ' h old'); }
         else soon.push(r.t + ' ' + hrs.toFixed(0) + ' h');

@@ -401,8 +401,8 @@ function alertsFor(s) {
   (s.loans || []).forEach(l => { if (l.nextDue && l.nextDue < horizon) {
     const ok = cash != null && cash >= l.inst;
     add(cash == null ? 'warn' : ok ? 'good' : 'crit', 'Loan', money(l.inst) + ' installment to ' + esc(l.partner) + ' due ' + fmtDT(l.nextDue) + ' (' + rel(l.nextDue) + ')', cash == null ? 'Enter your cash to check coverage.' : ok ? 'Cash covers it.' : 'Cash is below the installment.'); } });
-  (s.payments || []).forEach(p => add('warn', 'Payment', money(p.amt) + ' to ' + esc(p.partner) + ' still to pay' + (p.due ? ', due ' + fmtDT(p.due) : ''), 'Contract ' + esc(p.id) + '. Your cash includes this money until it is paid.'));
-  OPS.plans.filter(p => ['built', 'approved'].includes(cur(p.id).status)).forEach(p => { const n = daysTo(p.cogcEnd); if (n <= 7) add('warn', 'COGC', esc(p.pname) + ' ' + p.cogc.toLowerCase() + ' program ends ' + shortDate(p.cogcEnd) + ' (' + n + ' d)', 'Check the COGC motion and the vote.'); });
+  (s.payments || []).filter(p => p.amt >= 1000).forEach(p => add('warn', 'Payment', money(p.amt) + ' to ' + esc(p.partner) + ' still to pay' + (p.due ? ', due ' + fmtDT(p.due) : ''), 'Contract ' + esc(p.id) + '. Your cash includes this money until it is paid.'));
+  OPS.plans.filter(p => ['built', 'approved'].includes(cur(p.id).status)).forEach(p => { const n = daysTo(p.cogcEnd); if (n <= 1) add('warn', 'COGC', esc(p.pname) + ' ' + p.cogc.toLowerCase() + ' program ends ' + shortDate(p.cogcEnd) + ' (' + n + ' d)', 'Check the COGC motion and the vote.'); });
   const old = (s.orders || []).filter(o => o.ageH > 24);
   if (old.length) add('warn', 'Orders', old.length + ' CX order' + (old.length > 1 ? 's' : '') + ' open for over a day: ' + old.slice(0, 4).map(o => (o.s === 'S' ? 'sell ' : 'buy ') + o.n + ' ' + esc(o.tk)).join(', '), 'Check the price against the order book.');
   const rank = { crit: 0, warn: 1, good: 2 }; return A.sort((a, b) => rank[a.k] - rank[b.k]);
@@ -1022,10 +1022,13 @@ function viewLog() {
 const shortLoc = x => { if (!x) return '–'; const parts = String(x).split(' - '); let l = parts[parts.length - 1] || x; if (/^station$/i.test(l.trim()) || /station/i.test(l)) return 'Benten Station'; return l.replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s*-?\s*orbit\s*$/i, '').trim() || x; };
 // FIO lists the Umbra/Katoa run as a flight to "Kichijo (UV-072) - ORBIT": treat it as an Umbra -> Katoa trip
 const kichH = () => (S().kich != null ? S().kich : 2.5);
+const HOPH = 1; // hours from a system orbit stop to the planet
+function sysBase(s, x) { const t = String(x || ''); if (!t || /benten/i.test(t)) return null; const b = (s.bases || []).find(b => b.nid && t.includes('(' + b.nid.replace(/[a-z]$/i, '') + ')')); return b ? b.p : null; }
 const isRunDest = x => /UV-072/.test(String(x || ''));
 function enrouteTo(s, sh, name) {
   const arr0 = sh.arr || (s.t + (sh.etaH || 0) * HR), to = shortLoc(sh.to);
   if (to === name) return { arr: arr0, cargo: sh.cargo || {} };
+  if (!/UV-072/.test(String(sh.to || '')) && sysBase(s, sh.to) === name) return { arr: arr0 + HOPH * HR, cargo: sh.cargo || {} };
   if (!isRunDest(sh.to)) return null;
   const bs = ['Umbra', 'Katoa'].map(n => (s.bases || []).find(b => b.p === n)).filter(Boolean); const me = bs.find(b => b.p === name); if (!me) return null;
   const cargo = {};
@@ -1078,6 +1081,7 @@ function shipFree(s, sh, now) {
   const arr = sh.arr || (s.t + (sh.etaH || 0) * HR), to = shortLoc(sh.to), at = Math.max(arr, now);
   const baseNames = (s.bases || []).map(b => b.p);
   if (isRunDest(sh.to) && arr > now - 6e4) { const back = arr + (kichH() + legH('Umbra', 'Katoa') + flightH('Katoa')) * HR; return { t: back, arr, to: 'Katoa', back }; }
+  { const sb = sysBase(s, sh.to); if (sb && !isRunDest(sh.to) && !baseNames.includes(to) && arr > now - 6e4) { const a2 = arr + HOPH * HR; return { t: a2 + flightH(sb) * HR, arr: a2, to: sb, back: a2 + flightH(sb) * HR }; } }
   if (to === BEN || !baseNames.includes(to)) return { t: at, arr, to: BEN, back: null }; // no flight in the data: the ship sits at Benten
   return { t: at + flightH(to) * HR, arr, to, back: at + flightH(to) * HR };
 }
