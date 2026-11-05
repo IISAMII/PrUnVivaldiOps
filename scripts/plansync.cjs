@@ -15,6 +15,9 @@ const get = async p => { for (let i = 0; i < 3; i++) { const r = await fetch(B +
   }).sort((a, b) => a.id < b.id ? -1 : 1);
   try { const bl = await get('/data/buildings/'), bo = {}; for (const b of (bl.results || bl)) bo[b.building_ticker] = { c: (b.costs || []).map(x => x.material_ticker + ':' + x.material_amount).join(' '), a: b.area_cost, w: [b.pioneers || 0, b.settlers || 0, b.technicians || 0, b.engineers || 0, b.scientists || 0] };
     const bf = 'docs/data/buildings.json', bt = JSON.stringify(bo); if (!fs.existsSync(bf) || fs.readFileSync(bf, 'utf8') !== bt) { fs.writeFileSync(bf, bt); console.log('buildings.json updated'); } } catch (e) { console.log('buildings skipped:', e.message); }
+  try { const ms = await get('/data/market/summary/'), arr2 = Array.isArray(ms) ? ms : (ms.results || Object.values(ms)).flat ? (ms.results || Object.values(ms)).flat() : [], pr = {};
+    for (const x of arr2) if (x && x.ticker) pr[x.ticker] = [x.vwap_7d, x.vwap_30d, x.units_7d && x.turnover_7d_by_exchange && x.turnover_7d_by_exchange.CI1 && x.vwap_7d ? Math.round(x.turnover_7d_by_exchange.CI1 / x.vwap_7d / 7 * 100) / 100 : null];
+    const pf = 'docs/data/prices.json', pt = JSON.stringify(pr); if (Object.keys(pr).length && (!fs.existsSync(pf) || fs.readFileSync(pf, 'utf8') !== pt)) { fs.writeFileSync(pf, pt); console.log('prices.json updated,', Object.keys(pr).length, 'tickers'); } } catch (e) { console.log('prices skipped:', e.message); }
   const out = { plans }; const f = 'docs/data/plans.json'; const old = fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '';
   const txt = JSON.stringify(out); if (txt !== old) { fs.writeFileSync(f, txt); console.log('plans.json updated,', plans.length, 'plans'); } else console.log('no change,', plans.length, 'plans');
 })().catch(e => { console.error(e.message); process.exit(1); });
