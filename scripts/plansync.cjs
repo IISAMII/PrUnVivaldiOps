@@ -13,6 +13,8 @@ const get = async p => { for (let i = 0; i < 3; i++) { const r = await fetch(B +
     const exp = (d.experts || []).filter(x => x.amount > 0).map(x => x.amount + ' ' + String(x.type).toLowerCase()).join(', ');
     return { id: p.uuid.slice(0, 8), uuid: p.uuid, name: p.plan_name, planet: p.planet_natural_id, cogc: p.plan_cogc || null, permits: p.plan_permits_used, blds, exp: exp || 'none', io: io[p.uuid] || null, modified: p.modified_at };
   }).sort((a, b) => a.id < b.id ? -1 : 1);
+  try { const bl = await get('/data/buildings/'), bo = {}; for (const b of (bl.results || bl)) bo[b.building_ticker] = { c: (b.costs || []).map(x => x.material_ticker + ':' + x.material_amount).join(' '), a: b.area_cost, w: [b.pioneers || 0, b.settlers || 0, b.technicians || 0, b.engineers || 0, b.scientists || 0] };
+    const bf = 'docs/data/buildings.json', bt = JSON.stringify(bo); if (!fs.existsSync(bf) || fs.readFileSync(bf, 'utf8') !== bt) { fs.writeFileSync(bf, bt); console.log('buildings.json updated'); } } catch (e) { console.log('buildings skipped:', e.message); }
   const out = { plans }; const f = 'docs/data/plans.json'; const old = fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '';
   const txt = JSON.stringify(out); if (txt !== old) { fs.writeFileSync(f, txt); console.log('plans.json updated,', plans.length, 'plans'); } else console.log('no change,', plans.length, 'plans');
 })().catch(e => { console.error(e.message); process.exit(1); });

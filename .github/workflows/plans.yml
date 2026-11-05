@@ -26,7 +26,7 @@ jobs:
       - name: Save
         run: |
           git config user.name "ops-bot"; git config user.email "ops-bot@users.noreply.github.com"
-          git add docs/data/plans.json
+          git add docs/data/plans.json docs/data/buildings.json
           git diff --cached --quiet && exit 0
           git commit -m "Plans $(date -u +%FT%H:%MZ)"
           for i in 1 2 3; do git pull --rebase -X theirs origin main && git push && break; done
