@@ -529,7 +529,7 @@ function kitResult(s, text) {
     const mats = {}; (pkg.groups || []).forEach(g => { if (g.type === 'Manual' && g.materials) for (const [t, q] of Object.entries(g.materials)) mats[t] = (mats[t] || 0) + q; });
     if (!Object.keys(mats).length) return '<p class="warnc">Package ' + (pi + 1) + ' has no fixed material list (only Manual groups are supported).</p>';
     const rows = Object.entries(mats).map(([t, q]) => {
-      const have = wh.items[t] || 0, buy = Math.max(0, q - have), ask = pask(px, t) || ask_(t) || 0, known = !!(px[t] || P[t]), bd = pbid(px, t) || (P[t] && P[t][1]) || 0, bp = bidPlus(bd);
+      const have = wh.items[t] || 0, buy = Math.max(0, q - have), ask0 = pask(px, t) || ask_(t) || 0, l0 = book[t] && book[t][0] && book[t][0][0], ask = l0 && (!ask0 || l0 < ask0) ? l0 : ask0, known = !!(px[t] || P[t]), bd = pbid(px, t) || (P[t] && P[t][1]) || 0, bp = bidPlus(bd);
       let depth = null; const lad = book[t]; if (lad && lad.length && buy > 0) { let rem = buy, c = 0, part = false; for (const [p, n] of lad) { const k = Math.min(rem, n); c += k * p; rem -= k; if (rem <= 0) break; } if (rem > 0) { c += rem * lad[lad.length - 1][0] * 1.15; part = true; } depth = { c, part }; }
       const sv = (ask && bp && bp < ask) ? (ask - bp) * buy : 0, bid = !!(buy && ask && bp && bp < ask && (ask - bp) / ask >= 0.015 && (ask - bp) / ask <= 0.15 && sv >= 2000);
       return { t, q, have, buy, ask, known, bp, depth, sv, bid, cost: buy * ask };
