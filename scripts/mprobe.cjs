@@ -1,0 +1,3 @@
+const KEY = process.env.PRUNPLANNER_KEY; const B = 'https://api.prunplanner.org';
+(async () => { const r = await fetch(B + '/data/market/summary/', { headers: { Authorization: 'Api-Key ' + KEY } }); console.log('status', r.status); const j = await r.json(); const a = j.results || j; console.log('type', Array.isArray(a), (a.length || Object.keys(a).length));
+  const arr = Array.isArray(a) ? a : Object.values(a); console.log('SAMPLE', JSON.stringify(arr.filter(x => JSON.stringify(x).includes('PE')).slice(0, 2)).slice(0, 900)); console.log('KEYS', JSON.stringify(Object.keys(arr[0] || {}))); console.log('EX', [...new Set(arr.map(x => x.exchange_code || x.exchange))].slice(0, 12).join(',')); })().catch(e => console.log(e.message));

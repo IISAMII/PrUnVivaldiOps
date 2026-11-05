@@ -1307,7 +1307,8 @@ view.addEventListener('change', async e => {
 const h = location.hash.replace('#', ''); if (TABS.some(t => t[0] === h)) st.tab = h;
 render();
 
-function syncPlans(pj) {
+function syncPlans(pj, bj) {
+  for (const [k, v] of Object.entries(bj || {})) if (!OPS.bld[k]) OPS.bld[k] = v;
   for (const sp of (pj && pj.plans) || []) {
     const ex = OPS.plans.find(p => p.id === sp.id);
     if (ex) { if (sp.io) { ex.io = sp.io; CALC[ex.id] = calc(ex); } continue; }
@@ -1353,8 +1354,8 @@ function syncPlans(pj) {
     const r = await GH('GET', 'settings.json'); m.textContent = r.ok ? 'Token works and is stored. Changes are now saved.' : 'GitHub refused it (' + r.status + '). Check the repo and the Contents permission.'; if (!r.ok) { try { localStorage.removeItem('opsToken'); } catch (x) {} }
   });
   setSync('Loading data...');
-  const [latest, hist, alerts, settings, cash, adjust, bases, finch, claimsObs, plansJ] = await Promise.all([getJ('latest.json', null, 1), getJ('history.json', [], 1), getJ('alerts.json', [], 1), getJ('settings.json', {}, 1), getJ('cash.json', [], 1), getJ('adjust.json', [], 1), getJ('bases.json', {}, 1), getJ('finch.json', { rows: [] }, 1), getJ('claims.json', {}), getJ('plans.json', null, 1)]);
-  try { syncPlans(plansJ); } catch (x) { console.log('plan sync failed', x); }
+  const [latest, hist, alerts, settings, cash, adjust, bases, finch, claimsObs, plansJ, bldJ] = await Promise.all([getJ('latest.json', null, 1), getJ('history.json', [], 1), getJ('alerts.json', [], 1), getJ('settings.json', {}, 1), getJ('cash.json', [], 1), getJ('adjust.json', [], 1), getJ('bases.json', {}, 1), getJ('finch.json', { rows: [] }, 1), getJ('claims.json', {}), getJ('plans.json', null, 1), getJ('buildings.json', null, 1)]);
+  try { syncPlans(plansJ, bldJ); } catch (x) { console.log('plan sync failed', x); }
   st.snaps = (latest ? [latest] : []).concat((hist || []).filter(x => !latest || x.t !== latest.t)).sort((a, b) => b.t - a.t);
   st.alerts = (alerts || []).slice().sort((a, b) => b.t - a.t).slice(0, 40); st.cash = (cash || []).slice().sort((a, b) => b.t - a.t); st.adj = (adjust || []).slice().sort((a, b) => b.t - a.t);
   OBS = claimsObs || {}; st.saved = bases || {}; st.finch = (finch && finch.rows) || []; st.settings = settings || {};
