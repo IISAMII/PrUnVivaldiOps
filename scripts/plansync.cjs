@@ -21,7 +21,9 @@ const get = async p => { for (let i = 0; i < 3; i++) { const r = await fetch(B +
   const planets = {}; const now = Date.now();
   for (const nid of [...new Set(plans.map(p => p.planet).filter(Boolean))]) {
     try { const a = await get('/data/planet/' + nid + '/'), b = await get('/data/planet/' + nid + '/popr/');
-      const cur = (a.cogc_programs || []).filter(c => c.start_epochms <= now && c.end_epochms > now).sort((x, y) => y.end_epochms - x.end_epochms)[0];
+      const all = (a.cogc_programs || []).slice().sort((x, y) => x.start_epochms - y.start_epochms); let cur = all.find(c => c.start_epochms <= now && c.end_epochms > now);
+      // the same program runs on in consecutive weeks: follow the chain to its last end
+      if (cur) { let nx; while ((nx = all.find(c => c.start_epochms === cur.end_epochms && c.program_type === cur.program_type))) cur = nx; }
       planets[nid] = { cogc: a.active_cogc_program_type || null, cogcEnd: cur ? new Date(cur.end_epochms).toISOString().slice(0, 10) : null, free: [b.free_pioneer, b.free_settler, b.free_technician, b.free_engineer, b.free_scientist].map(x => x || 0) }; } catch (e) { console.log('planet', nid, 'skipped:', e.message); } }
   const out = { plans, planets }; const f = 'docs/data/plans.json'; const old = fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '';
   const txt = JSON.stringify(out); if (txt !== old) { fs.writeFileSync(f, txt); console.log('plans.json updated,', plans.length, 'plans'); } else console.log('no change,', plans.length, 'plans');
