@@ -853,8 +853,7 @@ function bookBefore(t) { const L = st.snaps.filter(x => x.book && Object.keys(x.
 function costFrom(pl, snap) {
   let ask = 0, depth = 0, partial = false;
   for (const [t, q] of Object.entries(bomOf(pl))) {
-    const a = (snap.px && snap.px[t] && snap.px[t][0]) || ask_(t) || 0; ask += q * a;
-    const lad = snap.book && snap.book[t]; if (!lad || !lad.length) { depth += q * a; continue; }
+    const lad = snap.book && snap.book[t]; let a = (snap.px && snap.px[t] && snap.px[t][0]) || ask_(t) || 0; if (lad && lad[0] && (!a || lad[0][0] < a)) a = lad[0][0]; ask += q * a; if (!lad || !lad.length) { depth += q * a; continue; }
     let rem = q, c = 0; for (const [p, n] of lad) { const k = Math.min(rem, n); c += k * p; rem -= k; if (rem <= 0) break; }
     if (rem > 0) { c += rem * lad[lad.length - 1][0] * 1.15; partial = true; } depth += c;
   }
