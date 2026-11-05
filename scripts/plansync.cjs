@@ -18,6 +18,11 @@ const get = async p => { for (let i = 0; i < 3; i++) { const r = await fetch(B +
   try { const ms = await get('/data/market/summary/'), arr2 = Array.isArray(ms) ? ms : (ms.results || Object.values(ms)).flat ? (ms.results || Object.values(ms)).flat() : [], pr = {};
     for (const x of arr2) if (x && x.ticker) pr[x.ticker] = [x.vwap_7d, x.vwap_30d, x.units_7d && x.turnover_7d_by_exchange && x.turnover_7d_by_exchange.CI1 && x.vwap_7d ? Math.round(x.turnover_7d_by_exchange.CI1 / x.vwap_7d / 7 * 100) / 100 : null];
     const pf = 'docs/data/prices.json', pt = JSON.stringify(pr); if (Object.keys(pr).length && (!fs.existsSync(pf) || fs.readFileSync(pf, 'utf8') !== pt)) { fs.writeFileSync(pf, pt); console.log('prices.json updated,', Object.keys(pr).length, 'tickers'); } } catch (e) { console.log('prices skipped:', e.message); }
-  const out = { plans }; const f = 'docs/data/plans.json'; const old = fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '';
+  const planets = {}; const now = Date.now();
+  for (const nid of [...new Set(plans.map(p => p.planet).filter(Boolean))]) {
+    try { const a = await get('/data/planet/' + nid + '/'), b = await get('/data/planet/' + nid + '/popr/');
+      const cur = (a.cogc_programs || []).filter(c => c.start_epochms <= now && c.end_epochms > now).sort((x, y) => y.end_epochms - x.end_epochms)[0];
+      planets[nid] = { cogc: a.active_cogc_program_type || null, cogcEnd: cur ? new Date(cur.end_epochms).toISOString().slice(0, 10) : null, free: [b.free_pioneer, b.free_settler, b.free_technician, b.free_engineer, b.free_scientist].map(x => x || 0) }; } catch (e) { console.log('planet', nid, 'skipped:', e.message); } }
+  const out = { plans, planets }; const f = 'docs/data/plans.json'; const old = fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '';
   const txt = JSON.stringify(out); if (txt !== old) { fs.writeFileSync(f, txt); console.log('plans.json updated,', plans.length, 'plans'); } else console.log('no change,', plans.length, 'plans');
 })().catch(e => { console.error(e.message); process.exit(1); });
