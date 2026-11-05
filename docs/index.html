@@ -1347,6 +1347,8 @@ function syncPlans(pj, bj, prj) {
     const np = { id: sp.id, name: sp.name, planet: sp.planet, pname: sp.name, cogc: String(sp.cogc || '').replace(/_/g, ' '), exp: sp.exp || 'none', blds, io: sp.io || null, cogcEnd: '', env: {}, free: [0, 0, 0, 0, 0], status: 'idea', desc: Object.entries(blds).map(([k, n]) => n + ' ' + k).join(' + '), note: 'Added automatically from PRUNplanner.' + (unk.length ? ' Buildings not priced: ' + unk.join(', ') + '.' : ''), synced: true };
     OPS.plans.push(np);
   }
+  const pln = (pj && pj.planets) || {};
+  OPS.plans.forEach(p => { const x = pln[p.planet]; if (x) { if (x.cogcEnd) p.cogcEnd = x.cogcEnd; if (x.free) p.free = x.free; } });
   OPS.plans.forEach(p => { CALC[p.id] = calc(p); });
 }
 (async () => {
