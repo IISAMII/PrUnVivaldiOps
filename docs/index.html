@@ -1307,15 +1307,17 @@ view.addEventListener('change', async e => {
 const h = location.hash.replace('#', ''); if (TABS.some(t => t[0] === h)) st.tab = h;
 render();
 
-function syncPlans(pj, bj) {
+function syncPlans(pj, bj, prj) {
+  for (const [k, v] of Object.entries(prj || {})) if (!OPS.prices[k] && v && v[0]) OPS.prices[k] = [v[0], v[0], v[0], v[0], v[2]];
   for (const [k, v] of Object.entries(bj || {})) if (!OPS.bld[k]) OPS.bld[k] = v;
   for (const sp of (pj && pj.plans) || []) {
     const ex = OPS.plans.find(p => p.id === sp.id);
-    if (ex) { if (sp.io) { ex.io = sp.io; CALC[ex.id] = calc(ex); } continue; }
+    if (ex) { if (sp.io) ex.io = sp.io; continue; }
     const blds = {}, unk = []; for (const [k, n] of Object.entries(sp.blds || {})) { if (OPS.bld[k]) blds[k] = n; else unk.push(k); }
     const np = { id: sp.id, name: sp.name, planet: sp.planet, pname: sp.name, cogc: String(sp.cogc || '').replace(/_/g, ' '), exp: sp.exp || 'none', blds, io: sp.io || null, cogcEnd: '', env: {}, free: [0, 0, 0, 0, 0], status: 'idea', desc: Object.entries(blds).map(([k, n]) => n + ' ' + k).join(' + '), note: 'Added automatically from PRUNplanner.' + (unk.length ? ' Buildings not priced: ' + unk.join(', ') + '.' : ''), synced: true };
-    OPS.plans.push(np); CALC[np.id] = calc(np);
+    OPS.plans.push(np);
   }
+  OPS.plans.forEach(p => { CALC[p.id] = calc(p); });
 }
 (async () => {
   const REPO = 'IISAMII/PrUnVivaldiOps';
@@ -1354,8 +1356,8 @@ function syncPlans(pj, bj) {
     const r = await GH('GET', 'settings.json'); m.textContent = r.ok ? 'Token works and is stored. Changes are now saved.' : 'GitHub refused it (' + r.status + '). Check the repo and the Contents permission.'; if (!r.ok) { try { localStorage.removeItem('opsToken'); } catch (x) {} }
   });
   setSync('Loading data...');
-  const [latest, hist, alerts, settings, cash, adjust, bases, finch, claimsObs, plansJ, bldJ] = await Promise.all([getJ('latest.json', null, 1), getJ('history.json', [], 1), getJ('alerts.json', [], 1), getJ('settings.json', {}, 1), getJ('cash.json', [], 1), getJ('adjust.json', [], 1), getJ('bases.json', {}, 1), getJ('finch.json', { rows: [] }, 1), getJ('claims.json', {}), getJ('plans.json', null, 1), getJ('buildings.json', null, 1)]);
-  try { syncPlans(plansJ, bldJ); } catch (x) { console.log('plan sync failed', x); }
+  const [latest, hist, alerts, settings, cash, adjust, bases, finch, claimsObs, plansJ, bldJ, prJ] = await Promise.all([getJ('latest.json', null, 1), getJ('history.json', [], 1), getJ('alerts.json', [], 1), getJ('settings.json', {}, 1), getJ('cash.json', [], 1), getJ('adjust.json', [], 1), getJ('bases.json', {}, 1), getJ('finch.json', { rows: [] }, 1), getJ('claims.json', {}), getJ('plans.json', null, 1), getJ('buildings.json', null, 1), getJ('prices.json', null, 1)]);
+  try { syncPlans(plansJ, bldJ, prJ); } catch (x) { console.log('plan sync failed', x); }
   st.snaps = (latest ? [latest] : []).concat((hist || []).filter(x => !latest || x.t !== latest.t)).sort((a, b) => b.t - a.t);
   st.alerts = (alerts || []).slice().sort((a, b) => b.t - a.t).slice(0, 40); st.cash = (cash || []).slice().sort((a, b) => b.t - a.t); st.adj = (adjust || []).slice().sort((a, b) => b.t - a.t);
   OBS = claimsObs || {}; st.saved = bases || {}; st.finch = (finch && finch.rows) || []; st.settings = settings || {};
