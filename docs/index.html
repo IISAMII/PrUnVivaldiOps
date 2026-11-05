@@ -386,7 +386,9 @@ function alertsFor(s) {
   s.bases.forEach(b => {
     if (!b.inv) return; const { rows } = runouts(b, now); const f = rows[0];
     if (f && f.ro !== Infinity) {
-      const h = (f.ro - now) / HR; const k = h < 24 ? 'crit' : h < 60 ? 'warn' : null;
+      const h = (f.ro - now) / HR; let k = h < 24 ? 'crit' : h < 60 ? 'warn' : null;
+      // a planned run that arrives in time covers a base that is not yet close to running out
+      if (k === 'warn') { try { const FC = (s.ships || []).length ? forecast(s, 96) : null; const r = FC && FC.runs.find(x => x.stops.some(z => z.p === b.p)); const y = r && r.stops.find(z => z.p === b.p); if (y && y.downH <= 0.05) k = null; } catch (e) { } }
       if (k) add(k, 'Supply', '<b>' + esc(b.p) + '</b> is short of ' + rows.filter(x => x.ro - f.ro < 6 * HR).slice(0, 4).map(x => esc(x.t)).join(', ') + ' at ' + fmtDT(f.ro) + ' (' + rel(f.ro) + ')', 'Then ' + rows.slice(1, 4).filter(x => x.ro !== Infinity).map(x => esc(x.t) + ' ' + fmtDT(x.ro)).join(', ') + '. Check ship cargo before sending a new run.');
     }
     const age = now - new Date(b.upd).getTime();
