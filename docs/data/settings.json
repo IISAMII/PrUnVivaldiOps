@@ -1,1 +1,1 @@
-{"claim":{"Katoa":2.6,"Milliways":7.45,"Nemesis":15.98,"Umbra":2.6},"exclude":{"Nemesis":true},"flight":{},"queue":{"Katoa|plasticsPrinterFacility":5,"Katoa|weavingPlant":5},"target":{"Milliways":4.1,"Katoa":2.2,"Umbra":2.2},"combo":true,"leg":{"Umbra>Katoa":6}}
+{"claim":{"Katoa":2.6,"Milliways":7.45,"Nemesis":15.98,"Umbra":2.6},"exclude":{"Nemesis":true},"flight":{},"queue":{"Katoa|plasticsPrinterFacility":5,"Katoa|weavingPlant":5},"target":{"Milliways":4,"Katoa":2.2,"Umbra":2.2},"combo":true,"leg":{"Umbra>Katoa":6}}
