@@ -1,8 +1,11 @@
 name: plans
+# Copies the PRUNplanner plans into docs/data/plans.json (started by the auto timer, or by hand)
 on:
   workflow_dispatch:
 permissions:
   contents: write
+concurrency:
+  group: plans
 jobs:
   plans:
     runs-on: ubuntu-latest
@@ -12,7 +15,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Probe PRUNplanner
+      - name: Read plans
         env:
           PRUNPLANNER_KEY: ${{ secrets.PRUNPLANNER_KEY }}
-        run: node scripts/plans_probe.cjs
+        run: node scripts/plansync.cjs
+      - name: Save
+        run: |
+          git config user.name "ops-bot"; git config user.email "ops-bot@users.noreply.github.com"
+          git add docs/data/plans.json
+          git diff --cached --quiet && exit 0
+          git commit -m "Plans $(date -u +%FT%H:%MZ)"
+          for i in 1 2 3; do git pull --rebase -X theirs origin main && git push && break; done

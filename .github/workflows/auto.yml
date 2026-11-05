@@ -20,7 +20,9 @@ jobs:
       - name: Start snapshot
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run snapshot.yml --repo "$GITHUB_REPOSITORY" --ref main
+        run: |
+          gh workflow run snapshot.yml --repo "$GITHUB_REPOSITORY" --ref main
+          gh workflow run plans.yml --repo "$GITHUB_REPOSITORY" --ref main || true
       - name: Wait
         run: sleep 1680
       - name: Start the next round
