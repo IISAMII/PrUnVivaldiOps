@@ -1,5 +1,7 @@
 name: auto
-# Timer only: every 30 minutes it starts the snapshot workflow.
+# Timer: GitHub's own cron only fires a few times a day on this repo, so this workflow
+# keeps itself going: start a snapshot, wait ~28 minutes, start itself again.
+# The cron line is only a restart if the chain ever breaks.
 on:
   schedule:
     - cron: '17,47 * * * *'
@@ -7,12 +9,22 @@ on:
 permissions:
   actions: write
   contents: read
+concurrency:
+  group: auto-chain
+  cancel-in-progress: false
 jobs:
   start:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 40
     steps:
       - name: Start snapshot
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run snapshot.yml --repo "$GITHUB_REPOSITORY" --ref main
+      - name: Wait
+        run: sleep 1680
+      - name: Start the next round
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run auto.yml --repo "$GITHUB_REPOSITORY" --ref main
