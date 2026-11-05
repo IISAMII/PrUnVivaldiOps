@@ -538,7 +538,7 @@ function kitResult(s, text) {
     const nm = (pkg.global && pkg.global.name) || 'PRUNplanner package', first = (pkg.actions || []).find(a => a.type === 'CX Buy') || {}, exch = first.exchange || 'CI1';
     const p1 = { global: { name: 'Bids ' + nm }, groups: [], actions: [] };
     const bidR = rows.filter(x => x.bid), restR = rows.filter(x => !x.bid && x.buy > 0);
-    if (bidR.length) { p1.groups.push({ type: 'Manual', name: 'Bid materials', materials: Object.fromEntries(bidR.map(x => [x.t, x.buy])) }); p1.actions.push({ type: 'CX Buy', name: 'Place bids', group: 'Bid materials', exchange: exch, allowUnfilled: true, buyPartial: !!first.buyPartial, useCXInv: first.useCXInv !== false, priceLimits: Object.fromEntries(bidR.map(x => [x.t, x.bp])) }); }
+    if (bidR.length) { p1.groups.push({ type: 'Manual', name: 'Bid materials', materials: Object.fromEntries(bidR.map(x => [x.t, x.buy])) }); p1.actions.push({ type: 'CX Buy', name: 'Place bids', group: 'Bid materials', exchange: exch, allowUnfilled: true, buyPartial: !!first.buyPartial, useCXInv: false, priceLimits: Object.fromEntries(bidR.map(x => [x.t, x.bp])) }); }
     const p2 = JSON.parse(JSON.stringify(pkg)); p2.global = { name: 'Buy and move ' + nm };
     (p2.actions || []).forEach(a => { if (a.type === 'CX Buy') { const g = (p2.groups || []).find(x => x.name === a.group); const ts = g && g.materials ? Object.keys(g.materials) : []; a.priceLimits = Object.fromEntries(ts.map(t => { const x = rows.find(y => y.t === t); return x && x.ask ? [t, up3(x.ask * 1.03)] : null; }).filter(Boolean)); a.name = 'Buy what is missing at ask'; } });
     const safe_ = x => String(x).normalize('NFKD').replace(/[^A-Za-z0-9 _]/g, ' ').replace(/\s+/g, ' ').trim() || 'Package';
