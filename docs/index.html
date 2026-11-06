@@ -674,11 +674,19 @@ function chartSvg(pts, proj) {
 }
 function tradeTable() {
   const T = allTrades(); if (!T.length) return '<p class="sub">No trades logged yet.</p>';
-  const g = {}; T.forEach(t => { const k = t.tk + t.s; const o = g[k] || (g[k] = { tk: t.tk, s: t.s, n: 0, val: 0, ref: 0 }); o.n += t.n; o.val += t.n * t.p; o.ref += t.n * t.v7; });
-  const rows = Object.values(g).sort((a, b) => b.val - a.val); const sells = rows.filter(r => r.s === 'S').reduce((a, r) => a + r.val, 0), buys = rows.filter(r => r.s === 'B').reduce((a, r) => a + r.val, 0); const first = Math.min(...T.map(t => t.ts));
-  const body = rows.map(r => { const avg = r.val / r.n, prem = r.s === 'S' ? (r.val - r.ref) / r.ref : (r.ref - r.val) / r.ref;
-    return '<tr><td>' + (r.s === 'S' ? 'Sold ' : 'Bought ') + esc(r.tk) + '</td><td class="n">' + num(r.n) + '</td><td class="n">' + avg.toLocaleString('en-US', { maximumFractionDigits: avg < 100 ? 1 : 0 }) + '</td><td class="n">' + money(r.val) + '</td><td class="n ' + (prem >= 0 ? 'pos' : 'neg') + '">' + (prem >= 0 ? '+' : '−') + Math.abs(prem * 100).toFixed(1) + '%</td></tr>'; }).join('');
-  return '<p class="sub">Since ' + dayText(first) + ': sold ' + money(sells) + ', bought ' + money(buys) + '. The last column compares your price with the 7-day average at the time; positive is in your favour.</p><div class="tablewrap"><table><thead><tr><th>Trade</th><th>Units</th><th>Avg price</th><th>Value</th><th>vs 7-day avg</th></tr></thead><tbody>' + body + '</tbody></table></div>';
+  const dk = t => new Date(t).toLocaleDateString('en-CA', { timeZone: TZ }), days = {};
+  T.forEach(t => (days[dk(t.ts)] = days[dk(t.ts)] || []).push(t));
+  const keys = Object.keys(days).sort().reverse(), today = dk(Date.now());
+  const sum = L => { let so = 0, bo = 0; L.forEach(t => { if (t.s === 'S') so += t.n * t.p; else bo += t.n * t.p; }); return { so, bo }; };
+  const all = sum(T), first = Math.min(...T.map(t => t.ts));
+  const dayHtml = k => { const L = days[k], g = {};
+    L.forEach(t => { const x = t.tk + t.s; const o = g[x] || (g[x] = { tk: t.tk, s: t.s, n: 0, val: 0, ref: 0 }); o.n += t.n; o.val += t.n * t.p; o.ref += t.n * t.v7; });
+    const rows = Object.values(g).sort((a, b) => b.val - a.val);
+    const body = rows.map(r => { const avg = r.val / r.n, dev = (r.val - r.ref) / r.ref, good = r.s === 'S' ? dev >= 0 : dev <= 0;
+      return '<tr><td>' + (r.s === 'S' ? 'Sold ' : 'Bought ') + esc(r.tk) + '</td><td class="n">' + num(r.n) + '</td><td class="n">' + avg.toLocaleString('en-US', { maximumFractionDigits: avg < 100 ? 1 : 0 }) + '</td><td class="n">' + money(r.val) + '</td><td class="n ' + (good ? 'pos' : 'neg') + '">' + (dev >= 0 ? '+' : '−') + Math.abs(dev * 100).toFixed(1) + '%</td></tr>'; }).join('');
+    const d = sum(L), lbl = k === today ? 'Today' : dayText(new Date(k + 'T12:00:00Z').getTime());
+    return '<details data-open="trd' + k + '"' + ((st.openB['trd' + k] != null ? st.openB['trd' + k] : k === today) ? ' open' : '') + '><summary><b>' + lbl + '</b> <span class="muted">· sold ' + money(d.so) + ', bought ' + money(d.bo) + '</span></summary><div class="tablewrap"><table><thead><tr><th>Trade</th><th>Units</th><th>Avg price</th><th>Value</th><th>vs 7-day avg</th></tr></thead><tbody>' + body + '</tbody></table></div></details>'; };
+  return '<p class="sub">Since ' + dayText(first) + ': sold ' + money(all.so) + ', bought ' + money(all.bo) + '. The last column is your price against the 7-day average at the time: green is in your favour (sold higher or bought lower), red against.</p>' + keys.map(dayHtml).join('');
 }
 function loanBlock() {
   const s = latestAny(); if (!s || !(s.loans || []).length) return '<p class="sub">No active loans in the latest snapshot.</p>';
