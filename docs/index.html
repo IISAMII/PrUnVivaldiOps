@@ -219,6 +219,14 @@ const step3 = p => Math.pow(10, Math.floor(Math.log10(Math.abs(p) || 1)) - 2);
 const up3 = p => { const s = step3(p); return Math.round(Math.ceil(p / s - 1e-9) * s * 1e6) / 1e6; };
 
 // ---------- plan maths (Bases library)
+// kit materials of a plan already on ships heading to its planet: returns last arrival time, or 0
+function kitOnWay(pl) {
+  try { const s = latest(); if (!s || !pl.planet) return 0; const need = {}; const all = Object.assign({}, pl.blds, { CM: 1 }); let area = 25;
+    for (const [b, n] of Object.entries(all)) { const bd = OPS.bld[b]; for (const m of bd.c.split(' ')) { const [t, q] = m.split(':'); need[t] = (need[t] || 0) + q * n; } if (b !== 'CM') area += bd.a * n; }
+    need.MCG = (need.MCG || 0) + 4 * area; const have = {}; let arr = 0;
+    (s.ships || []).filter(sh => (sh.to || '').includes(pl.planet)).forEach(sh => { arr = Math.max(arr, sh.arr || 0); Object.entries(sh.cargo || {}).forEach(([t, n]) => have[t] = (have[t] || 0) + n); });
+    return Object.entries(need).every(([t, q]) => (have[t] || 0) >= q * 0.98) ? arr : 0; } catch (e) { return 0; }
+}
 function buildCost(pl) {
   let tot = 0, area = 25; const all = Object.assign({}, pl.blds, { CM: 1 });
   for (const [b, n] of Object.entries(all)) { const bd = OPS.bld[b]; let c = 0; for (const m of bd.c.split(' ')) { const [t, q] = m.split(':'); c += q * ask(t); } tot += c * n; if (b !== 'CM') area += bd.a * n; }
@@ -652,7 +660,8 @@ function projectionBlock(pts) {
     (act ? '<div class="tile"><div class="k">Recent pace</div><div class="v">' + money(act.per) + ' / day</div><div class="s">net worth growth ' + dayText(act.from) + ' to ' + dayText(act.to) + '; stock building up counts</div></div>' : '') +
     (live != null ? '<div class="tile"><div class="k">Pace of current queues</div><div class="v">' + money(live) + ' / day</div><div class="s">live profit of the running queues after repairs</div></div>' : '') +
     '<div class="tile"><div class="k">Loan payments, 30 days</div><div class="v">' + money(p30) + '</div><div class="s">' + (pace > 0 ? Math.round(p30 / (pace * 30) * 100) + '% of income' : '') + (last ? '; debt free ' + dayText(last) : '') + '</div></div>' +
-    (nb && free > 0 ? '<div class="tile"><div class="k">Next base: ' + esc(nb.pname) + '</div><div class="v">' + Math.ceil(CALC[nb.id].cost / free) + ' days</div><div class="s">of income after loan payments to cover its ' + money(CALC[nb.id].cost) + ' build cost</div></div>' : '') + '</div>';
+    (nb && kitOnWay(nb) ? '<div class="tile"><div class="k">Next base: ' + esc(nb.pname) + '</div><div class="v">Kit paid</div><div class="s">build materials are on the ships to ' + esc(nb.planet || nb.pname) + ', arriving ' + fmtDT(kitOnWay(nb)) + '</div></div>' : '') +
+    (nb && free > 0 && !kitOnWay(nb) ? '<div class="tile"><div class="k">Next base: ' + esc(nb.pname) + '</div><div class="v">' + Math.ceil(CALC[nb.id].cost / free) + ' days</div><div class="s">of income after loan payments to cover its ' + money(CALC[nb.id].cost) + ' build cost</div></div>' : '') + '</div>';
   const html = tiles + '<div class="tablewrap"><table><thead><tr><th>Net worth in</th><th>Recent pace</th><th class="hide-s">Queue pace</th><th>Loans left</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
     '<p class="sub">Starting from ' + money(nw.v) + ' now (' + nw.note + '). It assumes income stays at the pace shown, no new bases, and prices stay the same. Loan payments do not change net worth because a payment lowers cash and debt equally.</p>';
   return { html, proj: [{ t: now, v: nw.v }, { t: end, v: nw.v + pace * (end - now) / DAY }] };
