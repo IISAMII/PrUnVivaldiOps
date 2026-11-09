@@ -176,6 +176,13 @@ details.panel[open] > summary { margin-bottom: 10px; }
 .seg { border-top: 1px solid var(--line); padding: 6px 0; }
 .seg summary { display: flex; justify-content: space-between; align-items: center; gap: 8px; cursor: pointer; }
 .segt { display: flex; flex-direction: column; }
+:root { --inc: #0072B2; --exp: #D55E00; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --inc: #56B4E9; --exp: #E69F00; } }
+:root[data-theme="dark"] { --inc: #56B4E9; --exp: #E69F00; }
+.tile .v.inc { color: var(--inc); } .tile .v.exp { color: var(--exp); }
+.sw { display: inline-block; width: 11px; height: 11px; vertical-align: -1px; margin-right: 2px; } .sw.inc { background: var(--inc); } .sw.exp { background: var(--exp); }
+.sw.hat { background: repeating-linear-gradient(45deg, var(--exp) 0 3px, rgba(255,255,255,.55) 3px 4px); }
+.cd svg { display: block; margin: 6px 0 14px; } .cd h3.sm { margin-top: 10px; }
 </style>
 </head>
 <body>
@@ -681,6 +688,51 @@ function chartSvg(pts, proj) {
   return '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Net worth over time">' + g + '<path d="' + line + '" fill="none" stroke="var(--accent)" stroke-width="2" opacity=".55"/>' + dots + lbl + pl + '</svg>' +
     '<div class="legend"><span><i style="background:var(--surface);border:2px solid var(--muted);border-radius:2px"></i>XIT FINCH equity (game data)</span>' + (proj ? '<span><i style="background:none;border:2px dashed var(--accent)"></i>Projection at the recent pace</span>' : '') + '<span><i style="background:var(--accent)"></i>Snapshot with cash entered</span></div>';
 }
+
+// ---------- cash dashboard (income and expenses), collapsed under Money
+function cashDash() {
+  const T = allTrades(), sa = latestAny(); if (!T.length) return '';
+  const dk = t => new Date(t).toLocaleDateString('en-CA', { timeZone: TZ }), W = 360, KIT = new Set(['BBH', 'BDE', 'TRU', 'BSE', 'BTA', 'MCG', 'LDE', 'LSE', 'LTA']);
+  const sold = {}, bought = {}, run = {}; let cum = 0, S = 0, B = 0, kit = 0;
+  T.slice().sort((a, b) => a.ts - b.ts).forEach(t => { const k = dk(t.ts), v = t.n * t.p; sold[k] = sold[k] || 0; bought[k] = bought[k] || 0; (run[k] = run[k] || []);
+    if (t.s === 'S') { sold[k] += v; cum += v; S += v; } else { bought[k] += v; cum -= v; B += v; if (KIT.has(t.tk)) kit += v; } run[k].push(cum); });
+  const days = Object.keys(sold).sort(), lab = k => new Date(k + 'T12:00:00Z').toLocaleDateString('en-GB', { timeZone: TZ, weekday: 'short', day: 'numeric' });
+  const k_ = v => Math.round(v / 1e3).toLocaleString('en-US') + 'k', M_ = v => (v / 1e6).toFixed(2) + 'M', pace = (() => { try { return incomeLive(); } catch (e) { return null; } })();
+  const hat = id => '<defs><pattern id="' + id + '" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke="#fff" stroke-opacity=".55" stroke-width="1.6"/></pattern></defs>';
+  const tx = (x, y, a, t, c, f) => '<text x="' + x + '" y="' + y + '" text-anchor="' + a + '" font-size="' + (f || 9) + '" fill="' + (c || 'var(--muted)') + '">' + t + '</text>';
+  // 1 bars per day
+  let b1; { const H = 190, l = 34, r = 8, top = 14, bot = 24, pw = W - l - r, ph = H - top - bot, mx = Math.max(...Object.values(sold), ...Object.values(bought), pace || 0) * 1.1, y = v => top + ph * (1 - v / mx), bw = pw / days.length;
+    b1 = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" role="img" aria-label="Income and expenses per day">' + hat('h1');
+    [0, 250e3, 500e3, 750e3, 1000e3, 1500e3].filter(g => g <= mx).forEach(g => { b1 += '<line x1="' + l + '" x2="' + (W - r) + '" y1="' + y(g) + '" y2="' + y(g) + '" stroke="var(--line)"/>' + tx(l - 4, y(g) + 3, 'end', Math.round(g / 1e3) + 'k'); });
+    days.forEach((k, i) => { const x = l + i * bw; b1 += '<rect x="' + (x + bw * .12) + '" y="' + y(sold[k]) + '" width="' + bw * .36 + '" height="' + (y(0) - y(sold[k])) + '" fill="var(--inc)"/>' +
+      ['', ' fill="url(#h1)"'].map(f => '<rect x="' + (x + bw * .52) + '" y="' + y(bought[k]) + '" width="' + bw * .36 + '" height="' + (y(0) - y(bought[k])) + '"' + (f || ' fill="var(--exp)"') + '/>').join('') + tx(x + bw / 2, H - 8, 'middle', lab(k)); });
+    if (pace) b1 += '<line x1="' + l + '" x2="' + (W - r) + '" y1="' + y(pace) + '" y2="' + y(pace) + '" stroke="var(--ink)" stroke-dasharray="3 3"/>' + tx(l + 4, y(pace) - 4, 'start', 'queue pace ' + k_(pace) + '/day', 'var(--ink)'); b1 += '</svg>'; }
+  // 2 waterfall
+  let b2; { const steps = [['Sold', S, 't'], ['Build kit', -kit, 'n'], ['Supplies', -(B - kit), 'n'], ['Net', S - B, 't']], H = 190, l = 8, r = 8, top = 18, bot = 26, pw = W - l - r, ph = H - top - bot, mx = Math.max(S, 1) * 1.08, y = v => top + ph * (1 - v / mx), bw = pw / steps.length; let rn = 0;
+    b2 = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" role="img" aria-label="Cash waterfall">' + hat('h2');
+    steps.forEach(([n, v, kd], i) => { const x = l + i * bw + bw * .15, w = bw * .7; let a, b; if (kd === 't') { a = 0; b = v; rn = v; } else { a = rn + v; b = rn; rn += v; } const col = kd === 'n' || v < 0 ? 'var(--exp)' : 'var(--inc)', yt = y(Math.max(a, b)), hh = Math.abs(y(a) - y(b));
+      b2 += '<rect x="' + x + '" y="' + yt + '" width="' + w + '" height="' + hh + '" fill="' + col + '"/>' + (kd === 'n' ? '<rect x="' + x + '" y="' + yt + '" width="' + w + '" height="' + hh + '" fill="url(#h2)"/>' : '') + tx(x + w / 2, yt - 4, 'middle', (v < 0 ? '−' : '') + M_(Math.abs(v)), 'var(--ink)', 10) + tx(x + w / 2, H - 8, 'middle', n, null, 10) + (i < steps.length - 1 ? '<line x1="' + (x + w) + '" x2="' + (x + bw) + '" y1="' + y(rn) + '" y2="' + y(rn) + '" stroke="var(--muted)" stroke-dasharray="2 2"/>' : ''); }); b2 += '</svg>'; }
+  // 3 cash against payments due
+  let b3 = ''; if (sa) { const w = worth(sa), due7 = (sa.loans || []).reduce((a, l) => a + (l.nextDue && l.nextDue < Date.now() + 7 * DAY ? l.inst : 0), 0), pend = (sa.payments || []).reduce((a, p) => a + p.amt, 0), cash = w.cash ? w.cash.v : null;
+    if (cash != null && cash > 0) { const due = Math.min(cash, due7 + pend), free = cash - due, ww = W - 16;
+      b3 = '<svg viewBox="0 0 ' + W + ' 64" width="100%" role="img" aria-label="Cash against payments due">' + hat('h3') + '<rect x="8" y="10" width="' + ww * free / cash + '" height="22" fill="var(--inc)"/><rect x="' + (8 + ww * free / cash) + '" y="10" width="' + ww * due / cash + '" height="22" fill="var(--exp)"/><rect x="' + (8 + ww * free / cash) + '" y="10" width="' + ww * due / cash + '" height="22" fill="url(#h3)"/>' +
+        '<text x="12" y="26" font-size="11" font-family="var(--font-num)" fill="#fff">free ' + M_(free) + '</text><text x="' + (W - 12) + '" y="26" text-anchor="end" font-size="11" font-family="var(--font-num)" fill="#fff">due ' + M_(due) + '</text>' + tx(8, 52, 'start', 'Cash ' + M_(cash) + ' · due within 7 days incl. pending contracts') + '</svg>'; } }
+  // 4 candles of running trade balance
+  let b4; { const H = 180, l = 34, r = 8, top = 12, bot = 24, pw = W - l - r, ph = H - top - bot, vals = [0].concat(...Object.values(run)); let lo = Math.min(...vals), hi = Math.max(...vals); const pad = (hi - lo) * .08 || 1; lo -= pad; hi += pad; const y = v => top + ph * (1 - (v - lo) / (hi - lo)), bw = pw / days.length; let prev = 0;
+    b4 = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" role="img" aria-label="Trade cash balance candles">' + hat('h4');
+    for (let g = Math.ceil(lo / 5e5) * 5e5; g <= hi; g += 5e5) b4 += '<line x1="' + l + '" x2="' + (W - r) + '" y1="' + y(g) + '" y2="' + y(g) + '" stroke="var(--line)"/>' + tx(l - 4, y(g) + 3, 'end', (g / 1e6).toFixed(1) + 'M');
+    days.forEach((k, i) => { const v = run[k], op = prev, c = v[v.length - 1], hh = Math.max(op, ...v), ll = Math.min(op, ...v), up = c >= op, cx = l + i * bw + bw / 2, ht = Math.max(Math.abs(y(op) - y(c)), 2);
+      b4 += '<line x1="' + cx + '" x2="' + cx + '" y1="' + y(hh) + '" y2="' + y(ll) + '" stroke="' + (up ? 'var(--inc)' : 'var(--exp)') + '" stroke-width="1.6"/><rect x="' + (cx - bw * .28) + '" y="' + y(Math.max(op, c)) + '" width="' + bw * .56 + '" height="' + ht + '" fill="' + (up ? 'var(--inc)' : 'var(--exp)') + '"/>' + (up ? '' : '<rect x="' + (cx - bw * .28) + '" y="' + y(Math.max(op, c)) + '" width="' + bw * .56 + '" height="' + ht + '" fill="url(#h4)"/>') + tx(cx, H - 8, 'middle', lab(k)); prev = c; }); b4 += '</svg>'; }
+  const net = S - B, nd = Math.max(1, (Date.now() - Math.min(...T.map(t => t.ts))) / DAY);
+  const tile = (k, v, s, c) => '<div class="tile"><div class="k">' + k + '</div><div class="v ' + (c || '') + '">' + v + '</div><div class="s">' + s + '</div></div>';
+  return '<details class="panel cd" data-open="cashdash"' + (st.openB.cashdash ? ' open' : '') + '><summary><b>Income and expenses</b> <span class="muted">· net ' + (net >= 0 ? '+' : '−') + M_(Math.abs(net)) + ' since ' + dayText(Math.min(...T.map(t => t.ts))) + '</span></summary>' +
+    '<div class="tiles">' + tile('Income', '▲ ' + M_(S), 'sales logged', 'inc') + tile('Expenses', '▼ ' + M_(B), 'purchases logged', 'exp') + tile('Net trading', (net >= 0 ? '▲ ' : '▼ ') + M_(Math.abs(net)), k_(net / nd) + ' a day' + (pace ? '; queues should make ' + k_(pace) : ''), net >= 0 ? 'inc' : 'exp') + '</div>' +
+    '<h3 class="sm">Per day</h3><p class="sub"><span class="sw inc"></span> sold <span class="sw exp hat"></span> bought (hatched)</p>' + b1 +
+    '<h3 class="sm">Where the money went</h3><p class="sub">All logged trades: sales, then the build kit, then supplies.</p>' + b2 +
+    (b3 ? '<h3 class="sm">Cash against payments due</h3>' + b3 : '') +
+    '<h3 class="sm">Trade cash balance per day</h3><p class="sub">Candle = open, high, low, close of the running balance. Blue ended higher, hatched orange lower.</p>' + b4 +
+    '</details>';
+}
 function tradeTable() {
   const T = allTrades(); if (!T.length) return '<p class="sub">No trades logged yet.</p>';
   const dk = t => new Date(t).toLocaleDateString('en-CA', { timeZone: TZ }), days = {};
@@ -787,7 +839,7 @@ function viewMoney() {
     '<div class="panel"><h2>Loans</h2>' + loanBlock() + '</div>' +
     finchPanel() +
     '<div class="panel"><h2>Supplies and products</h2>' + (sa ? splitBlock(sa) : '') + '</div>' +
-    '<div class="cols"><div class="panel"><h2>Materials across bases</h2>' + (s && s.bases.every(b => b.net) ? flowTable(s) : '<p class="sub">Log a new snapshot for this.</p>') + '</div><div class="panel"><h2>Sales and purchases</h2>' + tradeTable() + '</div></div>';
+    cashDash() + '<div class="cols"><div class="panel"><h2>Materials across bases</h2>' + (s && s.bases.every(b => b.net) ? flowTable(s) : '<p class="sub">Log a new snapshot for this.</p>') + '</div><div class="panel"><h2>Sales and purchases</h2>' + tradeTable() + '</div></div>';
 }
 
 // ---------- BASES
