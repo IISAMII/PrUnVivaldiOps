@@ -65,6 +65,7 @@ function addAlert(alerts, a, now) {
   const sig = x => JSON.stringify([(x.bases || []).map(b => [b.p, new Date(b.upd).getTime()]), (x.ships || []).map(h => [h.r, h.arr, h.cargo])]);
   if (!(hist[0] && sig(hist[0]) === sig(s) && s.t - hist[0].t < 3 * HR)) hist.unshift(lean(s, keepBook));
   delete s.cashFio;
+  { const tr = rd('trades.json', []), seen = new Set(tr.map(t => t.id)); let add = 0; for (const t of (s.trades || [])) if (!seen.has(t.id)) { tr.push(t); add++; } if (add || !tr.length) wr('trades.json', tr.sort((a, b) => a.ts - b.ts)); }
   wr('latest.json', s); wr('history.json', thin(hist, now)); wr('alerts.json', alerts.slice(0, 80)); wr('meta.json', { t: s.t, px: s.px, bases: Object.fromEntries(s.bases.map(b => [b.p, { upd: new Date(b.upd).getTime(), inv: b.inv }])) });
   console.log('snapshot', new Date(s.t).toISOString(), 'alerts', found.length, 'push', newPush.length);
   for (const t of newPush) await push(t);
