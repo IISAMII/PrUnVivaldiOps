@@ -1,0 +1,35 @@
+name: watchdog
+# Second, independent timer. GitHub sometimes kills a run with an "Internal server error",
+# which breaks the auto chain. Every ~14 minutes this checks that auto is alive and starts it
+# if not; auto in turn restarts this one, so both would have to die at once to stall.
+on:
+  schedule:
+    - cron: '7,37 * * * *'
+  workflow_dispatch:
+permissions:
+  actions: write
+  contents: read
+concurrency:
+  group: watchdog-chain
+  cancel-in-progress: false
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check auto
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          check() {
+            n=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/auto.yml/runs?per_page=5" --jq '[.workflow_runs[] | select(.status=="in_progress" or .status=="queued" or .status=="waiting")] | length')
+            if [ "${n:-0}" = "0" ]; then echo "auto not running, starting it"; gh workflow run auto.yml --repo "$GITHUB_REPOSITORY" --ref main; fi
+          }
+          check
+          sleep 840
+          check
+      - name: Start the next round
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run watchdog.yml --repo "$GITHUB_REPOSITORY" --ref main

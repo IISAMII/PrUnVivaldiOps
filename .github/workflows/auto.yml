@@ -23,6 +23,8 @@ jobs:
         run: |
           gh workflow run snapshot.yml --repo "$GITHUB_REPOSITORY" --ref main
           gh workflow run plans.yml --repo "$GITHUB_REPOSITORY" --ref main || true
+          n=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/watchdog.yml/runs?per_page=5" --jq '[.workflow_runs[] | select(.status=="in_progress" or .status=="queued" or .status=="waiting")] | length' || echo 0)
+          if [ "${n:-0}" = "0" ]; then gh workflow run watchdog.yml --repo "$GITHUB_REPOSITORY" --ref main || true; fi
       - name: Wait
         run: sleep 1680
       - name: Start the next round
