@@ -1,0 +1,12 @@
+{
+  "asof": "9 Nov 2026",
+  "source": "From the planning of building the next base",
+  "dates": ["10 Nov", "11 Nov", "12 Nov", "13 Nov", "14 Nov", "15 Nov", "16 Nov"],
+  "cash": [2.4, 2.85, 2.5, 2.95, 3.4, 3.85, 4.05],
+  "steps": [
+    ["12 Nov", "Pay the 800k and let the kit be fitted."],
+    ["13–14 Nov", "Buy the build (about 2.3M including HQ5), in chunks if the CX orders are thin. Keep at least 0.3M in cash."],
+    ["15 Nov", "Buy the 3-day supply (about 0.28M) and haul."],
+    ["16–17 Nov", "Place the base."]
+  ]
+}
