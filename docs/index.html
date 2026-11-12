@@ -283,6 +283,7 @@ const cxlValue = s => (s.orders || []).filter(o => o.s === 'S').reduce((a, o) =>
 const assets = s => { const v = s.val; return v.stock + v.wh + v.ships + v.fuel + v.build + (s.bases && s.bases[0] && s.bases[0].lines ? wipValue(s) : 0) + cxlValue(s); };
 const recipesOf = s => (s && s.recipes) || (st.snaps.find(x => x.recipes) || {}).recipes || [];
 function adjAt(t) { return st.adj.filter(a => a.t <= t).reduce((x, a) => x + a.amt, 0); }
+function cashNum(v) { let x = String(v == null ? '' : v).replace(/[^\d.,]/g, '').replace(/[.,]\d{1,2}$/, ''); return x.replace(/[.,]/g, ''); }
 function cashAt(s) {
   const e = st.cash.find(x => x.t <= s.t + 3600e3); if (!e) return null;
   const flow = allTrades().filter(t => t.ts > e.t && t.ts <= s.t).reduce((a, t) => a + (t.s === 'S' ? 1 : -1) * t.n * t.p, 0);
@@ -458,7 +459,7 @@ function viewToday() {
       '<p class="sub">Simulated order by order. Workers take their consumables once a day; the claim time is set per base on the Supply tab (default ' + new Date(Date.UTC(2026, 0, 1) + claimH() * HR).toLocaleTimeString('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }) + ' your time). Production orders take inputs when they start.</p>';
   } else sup = '<p class="sub">The latest snapshot is in the old format. Log a new one for exact times.</p>';
   const ships = shipsBlock(s);
-  const cashBox = '<div class="row"><label for="cashin" class="sub">Cash now in CIS (XIT FIN; FIO shows a stale balance)</label><input id="cashin" type="number" min="0" step="1000" placeholder="' + (st.cash[0] ? st.cash[0].cis : 'e.g. 650000') + '"><button class="act" id="cashsave">Save cash</button></div>';
+  const cashBox = '<div class="row"><label for="cashin" class="sub">Cash now in CIS (XIT FIN; FIO shows a stale balance)</label><input id="cashin" type="text" inputmode="numeric" autocomplete="off" oninput="this.value=cashNum(this.value)" placeholder="' + (st.cash[0] ? st.cash[0].cis : 'e.g. 650000') + '"><button class="act" id="cashsave">Save cash</button></div>';
   return '<p class="asof">Latest snapshot ' + ageText(now - s.t) + ' ago (' + fmtDT(s.t) + '). A new one is taken about every 30 minutes by the GitHub job.</p>' +
     '<section class="tiles">' + tiles + '</section>' + notifPanel() + '<div class="panel">' + cashBox + '</div>' +
     '<div class="cols"><div><h2>Needs attention</h2>' + alerts + '</div><div><div class="panel"><h2>Supply runway</h2>' + sup + '</div><div class="panel"><h2>Ships and cargo</h2>' + ships + '</div></div></div>' + freshPanel(s);
@@ -1351,7 +1352,7 @@ view.addEventListener('click', async e => {
   if (e.target.closest('[data-clearrun]')) { st.sup.only = null; st.sup.arrOv = null; st.sup.leave = null; render(); return; }
   const f = e.target.closest('#fchips [data-f]'); if (f) { st.filter = f.dataset.f; render(); return; }
   const id = e.target.id;
-  if (id === 'cashsave') { const inp = document.getElementById('cashin'); if (inp.value === '' || !(Number(inp.value) >= 0)) return; const t = Date.now(), cis = Math.round(Number(inp.value)); st.cash.unshift({ t, cis }); await enqueue('cash/c' + t, { t, cis }, 'Cash saved.'); render(); }
+  if (id === 'cashsave') { const inp = document.getElementById('cashin'); inp.value = cashNum(inp.value); if (inp.value === '' || !(Number(inp.value) >= 0)) return; const t = Date.now(), cis = Math.round(Number(inp.value)); st.cash.unshift({ t, cis }); await enqueue('cash/c' + t, { t, cis }, 'Cash saved.'); render(); }
   const fr = e.target.closest('[data-flreset]'); if (fr) { const f = Object.assign({}, S().flight); delete f[fr.dataset.flreset]; await saveSettings({ flight: f }); render(); return; }
   const ad = e.target.closest('[data-adjdel]'); if (ad) { const t = Number(ad.dataset.adjdel); st.adj = st.adj.filter(a => a.t !== t); if (db) { try { await db.doc('adjust/a' + t).delete(); setSync('Removed.'); } catch (x) { setSync('Could not remove.'); } } render(); return; }
   if (id === 'kitgo') { st.kit = document.getElementById('kitin').value; render(); return; }
