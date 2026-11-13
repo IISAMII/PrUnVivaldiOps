@@ -206,7 +206,7 @@ const STATUS = {
 const WT = ['P','S','T','E','Sc'];
 const XIT = [ { t: Date.UTC(2026,9,11,12), v: 2160000 }, { t: Date.UTC(2026,9,18,12), v: 3260000 }, { t: Date.UTC(2026,9,19,17), v: 3560000 } ];
 const TZ = 'Europe/Amsterdam', DAY = 864e5, HR = 36e5;
-const LT = { plasticsPrinterFacility: 'PPF', weavingPlant: 'WPL', farm: 'FRM', fermentationFacility: 'FER', chemPlant: 'CHP', polymerPlant: 'POL', incinerator: 'INC' };
+const LT = { plasticsPrinterFacility: 'PPF', weavingPlant: 'WPL', farm: 'FRM', fermentationFacility: 'FER', chemPlant: 'CHP', polymerPlant: 'POL', incinerator: 'INC', prefabPlant2: 'PP2' };
 const DEF_FLIGHT = { Katoa: 6, Umbra: 4.5, Milliways: 4.5, Nemesis: 8.5 };
 const P = OPS.prices;
 const ask_ = t => P[t] && P[t][0], ask = t => P[t] && P[t][0], bid = t => P[t] && P[t][1], v7 = t => (P[t] && (P[t][2] || P[t][0])) || 0, t7 = t => P[t] && P[t][4];
