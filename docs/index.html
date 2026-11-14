@@ -1168,12 +1168,19 @@ function forecast(s, Hh, ov) {
   while (ships.length && guard++ < 24) {
     let best = null; units.forEach(u => { const off = offsets(u.stops); let sb = Infinity; u.stops.forEach((p, i) => { if (nxt[p] != null) sb = Math.min(sb, nxt[p] - off[i] - BUFH * HR); }); if (sb !== Infinity && (!best || sb < best.sb)) best = { u, sb, off }; });
     if (!best || best.sb > E) break;
-    const u = best.u, sb = best.sb, off = best.off, sh = ships.reduce((a, c) => c.free < a.free ? c : a), earliest = Math.max(now, sh.free + LOADH * HR), dep = runs.length === 0 && ov ? Math.max(earliest, ov) : Math.max(earliest, sb);
+    const u = best.u, sb = best.sb, off = best.off;
+    const cands = ships.map(c => { const e0 = Math.max(now, c.free + LOADH * HR), d0 = runs.length === 0 && ov ? Math.max(e0, ov) : Math.max(e0, sb), cs = (s.ships || []).find(x => x.r === c.r) || {}, wc = cs.wc || 500, vc = cs.vc || 500;
+      let L = u.est, trim = 0;
+      if (u.n === 0) { const tr = { ship: c.r, stops: u.stops.map((p, i) => ({ p, arr: d0 + off[i] })) }; L = loadFor(s, tr); if (L.tons > wc * 0.98 || L.vol > vc * 0.98) { const fd = fitDays(s, tr); trim = fd == null ? 0 : Math.max(0, Math.max(...u.stops.map(targetD)) - fd); } }
+      else if (L && (L.tons > wc * 0.98 || L.vol > vc * 0.98)) trim = 1;
+      return { c, e0, d0, wc, vc, cost: Math.max(0, (d0 - sb) / HR) + 8 * trim }; });
+    const bc = Math.min(...cands.map(x => x.cost)), pk = cands.filter(x => x.cost <= bc + 0.5).sort((x, y) => (x.wc - y.wc) || (x.vc - y.vc) || (x.c.free - y.c.free))[0];
+    const sh = pk.c, earliest = pk.e0, dep = pk.d0;
     const stops = u.stops.map((p, i) => { const arr = dep + off[i], dl = nxt[p] != null ? nxt[p] : null; return { p, arr, dl, downH: dl != null ? Math.max(0, (arr - dl) / HR) : 0, mat: u.n === 0 ? info[p].pl.mats[0].t : null }; });
     const last = stops[stops.length - 1], ret = last.arr + flightH(last.p) * HR;
     const run = { label: u.stops.join(' → '), unit: u.stops, stops, ship: sh.r, earliest, sendBy: sb, dep, ret, slack: (sb - earliest) / HR, lateH: Math.max(...stops.map(x => x.downH)), est: u.n > 0 };
     run.fitD = u.n === 0 ? fitDays(s, run) : null; const kk = run.fitD != null ? run.fitD : null;
-    runs.push(run); sh.runs.push(run); sh.free = ret;
+    runs.push(run); sh.runs.push(run); sh.free = ret; if (u.n === 0) { const L0 = loadFor(s, run); u.est = { tons: L0.tons, vol: L0.vol }; }
     stops.forEach(x => { const old = nxt[x.p]; const tg = kk != null ? Math.min(kk, info[x.p].tgt) : info[x.p].tgt; let nx = u.n === 0 ? planBase(s, info[x.p].b, x.arr - flightH(x.p) * HR, tg, true, x.arr).lastsTo : (old != null ? old : x.arr) + tg * DAY; if (nx === Infinity || nx <= (old != null ? old : 0)) delete nxt[x.p]; else nxt[x.p] = nx; });
     u.n++;
   }
