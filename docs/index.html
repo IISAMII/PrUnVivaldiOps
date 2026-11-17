@@ -182,7 +182,7 @@ details.panel[open] > summary { margin-bottom: 10px; }
 .tile .v.inc { color: var(--inc); } .tile .v.exp { color: var(--exp); }
 .sw { display: inline-block; width: 11px; height: 11px; vertical-align: -1px; margin-right: 2px; } .sw.inc { background: var(--inc); } .sw.exp { background: var(--exp); }
 .sw.hat { background: repeating-linear-gradient(45deg, var(--exp) 0 3px, rgba(255,255,255,.55) 3px 4px); }
-.cd svg { display: block; margin: 6px 0 14px; } .cd h3.sm { margin-top: 10px; }
+.cd svg { display: block; margin: 6px 0 14px; max-width: 520px; } .cd h3.sm { margin-top: 10px; }
 </style>
 </head>
 <body>
@@ -697,7 +697,7 @@ function cashDash() {
   const sold = {}, bought = {}, run = {}; let cum = 0, S = 0, B = 0, kit = 0;
   T.slice().sort((a, b) => a.ts - b.ts).forEach(t => { const k = dk(t.ts), v = t.n * t.p; sold[k] = sold[k] || 0; bought[k] = bought[k] || 0; (run[k] = run[k] || []);
     if (t.s === 'S') { sold[k] += v; cum += v; S += v; } else { bought[k] += v; cum -= v; B += v; if (KIT.has(t.tk)) kit += v; } run[k].push(cum); });
-  const days = Object.keys(sold).sort(), lab = k => new Date(k + 'T12:00:00Z').toLocaleDateString('en-GB', { timeZone: TZ, weekday: 'short', day: 'numeric' });
+  const days = Object.keys(sold).sort(), lab = (k, i) => (i % 2 ? '' : new Date(k + 'T12:00:00Z').toLocaleDateString('en-GB', { timeZone: TZ, day: 'numeric' }));
   const k_ = v => Math.round(v / 1e3).toLocaleString('en-US') + 'k', M_ = v => (v / 1e6).toFixed(2) + 'M', pace = (() => { try { return incomeLive(); } catch (e) { return null; } })();
   const hat = id => '<defs><pattern id="' + id + '" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke="#fff" stroke-opacity=".55" stroke-width="1.6"/></pattern></defs>';
   const tx = (x, y, a, t, c, f) => '<text x="' + x + '" y="' + y + '" text-anchor="' + a + '" font-size="' + (f || 9) + '" fill="' + (c || 'var(--muted)') + '">' + t + '</text>';
@@ -706,7 +706,7 @@ function cashDash() {
     b1 = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" role="img" aria-label="Income and expenses per day">' + hat('h1');
     [0, 250e3, 500e3, 750e3, 1000e3, 1500e3].filter(g => g <= mx).forEach(g => { b1 += '<line x1="' + l + '" x2="' + (W - r) + '" y1="' + y(g) + '" y2="' + y(g) + '" stroke="var(--line)"/>' + tx(l - 4, y(g) + 3, 'end', Math.round(g / 1e3) + 'k'); });
     days.forEach((k, i) => { const x = l + i * bw; b1 += '<rect x="' + (x + bw * .12) + '" y="' + y(sold[k]) + '" width="' + bw * .36 + '" height="' + (y(0) - y(sold[k])) + '" fill="var(--inc)"/>' +
-      ['', ' fill="url(#h1)"'].map(f => '<rect x="' + (x + bw * .52) + '" y="' + y(bought[k]) + '" width="' + bw * .36 + '" height="' + (y(0) - y(bought[k])) + '"' + (f || ' fill="var(--exp)"') + '/>').join('') + tx(x + bw / 2, H - 8, 'middle', lab(k)); });
+      ['', ' fill="url(#h1)"'].map(f => '<rect x="' + (x + bw * .52) + '" y="' + y(bought[k]) + '" width="' + bw * .36 + '" height="' + (y(0) - y(bought[k])) + '"' + (f || ' fill="var(--exp)"') + '/>').join('') + tx(x + bw / 2, H - 8, 'middle', lab(k, i)); });
     if (pace) b1 += '<line x1="' + l + '" x2="' + (W - r) + '" y1="' + y(pace) + '" y2="' + y(pace) + '" stroke="var(--ink)" stroke-dasharray="3 3"/>' + tx(l + 4, y(pace) - 4, 'start', 'queue pace ' + k_(pace) + '/day', 'var(--ink)'); b1 += '</svg>'; }
   // 2 waterfall
   let b2; { const steps = [['Sold', S, 't'], ['Build kit', -kit, 'n'], ['Supplies', -(B - kit), 'n'], ['Net', S - B, 't']], H = 190, l = 8, r = 8, top = 18, bot = 26, pw = W - l - r, ph = H - top - bot, mx = Math.max(S, 1) * 1.08, y = v => top + ph * (1 - v / mx), bw = pw / steps.length; let rn = 0;
@@ -723,7 +723,7 @@ function cashDash() {
     b4 = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" role="img" aria-label="Trade cash balance candles">' + hat('h4');
     for (let g = Math.ceil(lo / 5e5) * 5e5; g <= hi; g += 5e5) b4 += '<line x1="' + l + '" x2="' + (W - r) + '" y1="' + y(g) + '" y2="' + y(g) + '" stroke="var(--line)"/>' + tx(l - 4, y(g) + 3, 'end', (g / 1e6).toFixed(1) + 'M');
     days.forEach((k, i) => { const v = run[k], op = prev, c = v[v.length - 1], hh = Math.max(op, ...v), ll = Math.min(op, ...v), up = c >= op, cx = l + i * bw + bw / 2, ht = Math.max(Math.abs(y(op) - y(c)), 2);
-      b4 += '<line x1="' + cx + '" x2="' + cx + '" y1="' + y(hh) + '" y2="' + y(ll) + '" stroke="' + (up ? 'var(--inc)' : 'var(--exp)') + '" stroke-width="1.6"/><rect x="' + (cx - bw * .28) + '" y="' + y(Math.max(op, c)) + '" width="' + bw * .56 + '" height="' + ht + '" fill="' + (up ? 'var(--inc)' : 'var(--exp)') + '"/>' + (up ? '' : '<rect x="' + (cx - bw * .28) + '" y="' + y(Math.max(op, c)) + '" width="' + bw * .56 + '" height="' + ht + '" fill="url(#h4)"/>') + tx(cx, H - 8, 'middle', lab(k)); prev = c; }); b4 += '</svg>'; }
+      b4 += '<line x1="' + cx + '" x2="' + cx + '" y1="' + y(hh) + '" y2="' + y(ll) + '" stroke="' + (up ? 'var(--inc)' : 'var(--exp)') + '" stroke-width="1.6"/><rect x="' + (cx - bw * .28) + '" y="' + y(Math.max(op, c)) + '" width="' + bw * .56 + '" height="' + ht + '" fill="' + (up ? 'var(--inc)' : 'var(--exp)') + '"/>' + (up ? '' : '<rect x="' + (cx - bw * .28) + '" y="' + y(Math.max(op, c)) + '" width="' + bw * .56 + '" height="' + ht + '" fill="url(#h4)"/>') + tx(cx, H - 8, 'middle', lab(k, i)); prev = c; }); b4 += '</svg>'; }
   const net = S - B, nd = Math.max(1, (Date.now() - Math.min(...T.map(t => t.ts))) / DAY);
   const tile = (k, v, s, c) => '<div class="tile"><div class="k">' + k + '</div><div class="v ' + (c || '') + '">' + v + '</div><div class="s">' + s + '</div></div>';
   return '<details class="panel cd" data-open="cashdash"' + (st.openB.cashdash ? ' open' : '') + '><summary><b>Income and expenses</b> <span class="muted">· net ' + (net >= 0 ? '+' : '−') + M_(Math.abs(net)) + ' since ' + dayText(Math.min(...T.map(t => t.ts))) + '</span></summary>' +
