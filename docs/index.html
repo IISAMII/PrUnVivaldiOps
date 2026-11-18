@@ -1173,7 +1173,7 @@ function forecast(s, Hh, ov) {
     let best = null; units.forEach(u => { const off = offsets(u.stops); let sb = Infinity; u.stops.forEach((p, i) => { if (nxt[p] != null) sb = Math.min(sb, nxt[p] - off[i] - BUFH * HR); }); if (sb !== Infinity && (!best || sb < best.sb)) best = { u, sb, off }; });
     if (!best || best.sb > E) break;
     const u = best.u, sb = best.sb, off = best.off;
-    const cands = ships.map(c => { const e0 = Math.max(now, c.free + LOADH * HR), d0 = runs.length === 0 && ov ? Math.max(e0, ov) : Math.max(e0, sb), cs = (s.ships || []).find(x => x.r === c.r) || {}, wc = cs.wc || 500, vc = cs.vc || 500;
+    const cands = ships.map(c => { const e0 = Math.max(now, c.free + LOADH * HR), d0 = runs.length === 0 && ov ? Math.max(now, c.free, ov) : Math.max(e0, sb), cs = (s.ships || []).find(x => x.r === c.r) || {}, wc = cs.wc || 500, vc = cs.vc || 500;
       let L = u.est, trim = 0;
       if (u.n === 0) { const tr = { ship: c.r, stops: u.stops.map((p, i) => ({ p, arr: d0 + off[i] })) }; L = loadFor(s, tr); if (L.tons > wc * 0.98 || L.vol > vc * 0.98) { const fd = fitDays(s, tr); trim = fd == null ? 0 : Math.max(0, Math.max(...u.stops.map(targetD)) - fd); } }
       else if (L && (L.tons > wc * 0.98 || L.vol > vc * 0.98)) trim = 1;
@@ -1275,7 +1275,7 @@ function forecastHtml() {
     (none ? '<p class="sub">No run needed in this window: ' + none + '.</p>' : '') + scheduleHtml(F) + '<h3 class="sm">Timeline</h3>' + forecastSvg(s, F, Hh) +
     '<h3 class="sm">Settings for this planner</h3><div class="chips" role="group" aria-label="Bases in the planner" id="fcbases">' + bchips + '</div><p class="sub">Bases shown here are separate from the Supply tab.</p>' + combo +
     '<div class="row" style="margin:8px 0"><button class="act" id="icsdl">Add departures to my calendar (.ics)</button></div>' +
-    '<p class="sub">Ships: ' + sf + '. Send-by = the first time a material runs short, minus the flight time and ' + BUFH + ' h of safety; loading takes ' + LOADH + ' h. A trip with several stops uses the leg times above. The forecast uses the last FIO reading of each base and the cargo already on its way; open a base or ship in the game to sharpen it. “Plan this run” fills the Supply tab with this ship, the departure time and the right arrival times. The calendar file has a reminder 1 h before each departure; import it again after the plan changes.</p></div>';
+    '<p class="sub">Ships: ' + sf + '. Send-by = the first time a material runs short, minus the flight time and ' + BUFH + ' h of safety; loading is assumed to take ' + LOADH + ' h (a custom time can be earlier, down to the ship arriving). A trip with several stops uses the leg times above. The forecast uses the last FIO reading of each base and the cargo already on its way; open a base or ship in the game to sharpen it. “Plan this run” fills the Supply tab with this ship, the departure time and the right arrival times. The calendar file has a reminder 1 h before each departure; import it again after the plan changes.</p></div>';
 }
 function runBanner() { if (!st.sup.only) return ''; return '<div class="panel"><b>Planning run: ' + st.sup.only.map(esc).join(' → ') + '</b> <span class="sub">from the Ships tab forecast, leaving ' + fmtDT(st.sup.leave) + '</span> <button class="act" data-clearrun="1">Back to normal</button></div>'; }
 function viewShips() {
