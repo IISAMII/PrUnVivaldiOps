@@ -23,19 +23,20 @@ async function schedule(topic, seq, atMs, body) {
   return r.status;
 }
 async function cancel(topic, seq) { const r = await fetch(url(topic, seq), { method: 'DELETE' }); return r.status; }
-async function scheduledHas(topic, seq) {
-  const r = await fetch(url(topic) + '/json?poll=1&scheduled=1'); if (!r.ok) return null; return (await r.text()).includes(seq);
+async function scheduledList(topic) {
+  const r = await fetch(url(topic) + '/json?poll=1&scheduled=1'); return { status: r.status, text: r.ok ? await r.text() : '' };
 }
 // One-off check whether this ntfy server accepts a sequence id and cancels queued messages.
 async function selfTest(topic, now) {
-  const seq = 'selftest-' + now.toString(36), out = { t: now, ok: false, cancel: false };
+  const seq = 'selftest-' + now.toString(36), out = { v: 2, t: now, ok: false, cancel: false };
   try {
     out.post = await schedule(topic, seq, now + 3 * HR, 'Test only, cancelled right away');
     if (out.post !== 200) return out;
     out.ok = true;
-    const before = await scheduledHas(topic, seq); out.del = await cancel(topic, seq); const after = await scheduledHas(topic, seq);
-    out.cancel = before === true && after === false;
-    if (before === null) out.cancel = out.del === 200;
+    const b = await scheduledList(topic); out.before = { s: b.status, has: b.text.includes(seq), n: b.text.split('\n').filter(Boolean).length, head: b.text.slice(0, 160) };
+    const d = await fetch(url(topic, seq), { method: 'DELETE' }); out.del = d.status; out.delBody = typeof d.text === 'function' ? (await d.text()).slice(0, 160) : '';
+    const a = await scheduledList(topic); out.after = { s: a.status, has: a.text.includes(seq), n: a.text.split('\n').filter(Boolean).length };
+    out.cancel = out.del === 200 && ((b.status === 200 && out.before.has && !out.after.has) || b.status !== 200);
   } catch (e) { out.err = String(e.message).slice(0, 80); }
   return out;
 }
@@ -43,7 +44,7 @@ async function run(s, state, topic, now, log) {
   state = state || { flights: {} }; state.flights = state.flights || {};
   if (!topic) return { state, note: 'no topic' };
   const notes = [];
-  if (!state.test || (!state.test.cancel && now - state.test.t > 12 * HR)) { state.test = await selfTest(topic, now); notes.push('self-test ' + JSON.stringify(state.test)); }
+  if (!state.test || state.test.v !== 2 || (!state.test.cancel && now - state.test.t > 12 * HR)) { state.test = await selfTest(topic, now); notes.push('self-test ' + JSON.stringify(state.test)); console.log('shipnotify selftest', JSON.stringify(state.test)); }
   const canCancel = !!(state.test && state.test.cancel);
   const live = {};
   for (const sh of s.ships || []) if (sh.fid && sh.arr) live[sh.fid] = sh;
