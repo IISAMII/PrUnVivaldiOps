@@ -28,30 +28,19 @@ async function listing(topic, q) {
   return { s: r.status, text };
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-// One-off check (about 3 min): cancel per the ntfy docs, with a pause before cancelling.
+// One-off phone check using the real message path: 2 samples, 1 cancelled, 1 replaced.
 async function selfTest(topic, now) {
-  const id = now.toString(36), out = { v: 7, t: now, ok: false, cancel: false, var: {} };
-  const post = async (q, body, delayS) => { try { const r = await fetch(url(topic) + '/' + q, { method: 'POST', headers: { Title: 'Cancel test (should NOT arrive)', Priority: 'min', Tags: 'test_tube', Delay: String(delayS) }, body }); return r.status; } catch (e) { return String(e.message).slice(0, 40); } };
+  const id = now.toString(36), out = { v: 8, t: now, ok: false, cancel: true, var: {} };
+  const at = now + 75e3;
   try {
-    const t0 = Math.round(Date.now() / 1000), at = t0 + 90;
-    const names = { del: 'cd-a-', get: 'cd-b-', upd: 'cd-c-' };
-    for (const k of Object.keys(names)) out.var[k] = { post: await post(names[k] + id, 'cancel ' + k + ' ' + id, at) };
+    out.var.arrive = await schedule(topic, 'st-a-' + id, at, 'TEST 07LOP arrived at Singren (it flies back by itself)');
+    out.var.cmd = await schedule(topic, 'st-b-' + id, at, 'TEST 07LOQ arrived at Katoa: needs the next command (usually to Benten)');
+    out.var.cancelled = await schedule(topic, 'st-c-' + id, at, 'TEST this one was cancelled and must NOT arrive');
+    out.var.replaced = await schedule(topic, 'st-d-' + id, at, 'TEST old time, must NOT arrive');
     await sleep(8e3);
-    const g = u => fetch(url(topic) + '/' + u, { method: 'GET' }).then(r => r.status).catch(e => String(e.message).slice(0, 30));
-    out.var.del.res = await fetch(url(topic) + '/' + names.del + id, { method: 'DELETE' }).then(r => r.status);
-    out.var.get.res = await g(names.get + id + '/delete');
-    out.var.upd.res = await post(names.upd + id, 'cancel upd ' + id + ' REPLACED (late)', t0 + 3 * 86400 - 600);
-    out.ok = true;
-    await sleep(110e3);
-    const late = await listing(topic, 'since=all');
-    const lines = late.text.split('\n').filter(Boolean).map(l => { try { return JSON.parse(l); } catch (e) { return {}; } });
-    for (const k of Object.keys(names)) {
-      const mine = lines.filter(m => (m.message || '').includes('cancel ' + k + ' ' + id) || (m.sequence_id || '') === names[k] + id);
-      out.var[k].events = mine.map(m => m.event + (m.message ? ':msg' : '')).join(',');
-      out.var[k].arrived = mine.some(m => m.event === 'message');
-    }
-    out.works = Object.keys(names).filter(k => out.var[k].arrived === false);
-    out.cancel = out.works.length > 0;
+    out.var.del = await cancel(topic, 'st-c-' + id);
+    out.var.upd = await schedule(topic, 'st-d-' + id, at + 15e3, 'TEST 07LOP is back at Benten (replaced message, 15 s later)');
+    out.ok = Object.values(out.var).every(v => v === 200);
   } catch (e) { out.err = String(e.message).slice(0, 80); }
   return out;
 }
@@ -59,7 +48,7 @@ async function run(s, state, topic, now, log) {
   state = state || { flights: {} }; state.flights = state.flights || {};
   if (!topic) return { state, note: 'no topic' };
   const notes = [];
-  if (!state.test || state.test.v !== 7) { state.test = await selfTest(topic, now); notes.push('self-test ' + JSON.stringify(state.test)); console.log('shipnotify selftest', JSON.stringify(state.test)); }
+  if (!state.test || state.test.v !== 8) { state.test = await selfTest(topic, now); notes.push('self-test ' + JSON.stringify(state.test)); console.log('shipnotify selftest', JSON.stringify(state.test)); }
   const canCancel = !!(state.test && state.test.cancel);
   const live = {};
   for (const sh of s.ships || []) if (sh.fid && sh.arr) live[sh.fid] = sh;
