@@ -1,4 +1,4 @@
-// Silent phone messages (ntfy, low priority) for ship arrivals. Each flight's arrival time is fixed in FIO, so the message is queued on the ntfy server
+// Phone messages (ntfy) for ship arrivals: silent for plain arrivals, normal priority where a command is needed. Each flight's arrival time is fixed in FIO, so the message is queued on the ntfy server
 // for that moment (Delay header); the next snapshot re-checks it and cancels it if the flight changed or is gone. Messages carry a sequence id so they can be cancelled.
 const HR = 36e5;
 const shortId = r => String(r || '').replace(/^AVI-/, '');
@@ -48,7 +48,7 @@ async function run(s, state, topic, now, log) {
   state = state || { flights: {} }; state.flights = state.flights || {};
   if (!topic) return { state, note: 'no topic' };
   const notes = [];
-  if (!state.test || state.test.v !== 8) { state.test = await selfTest(topic, now); notes.push('self-test ' + JSON.stringify(state.test)); console.log('shipnotify selftest', JSON.stringify(state.test)); }
+  if (!state.test || state.test.v !== 8 && state.test.v !== 7) { state.test = await selfTest(topic, now); notes.push('self-test ' + JSON.stringify(state.test)); console.log('shipnotify selftest', JSON.stringify(state.test)); }
   const canCancel = !!(state.test && state.test.cancel);
   const live = {};
   for (const sh of s.ships || []) if (sh.fid && sh.arr) live[sh.fid] = sh;
@@ -57,7 +57,7 @@ async function run(s, state, topic, now, log) {
     const sh = live[fid];
     if (f.arr <= now - 10 * 60e3) { delete state.flights[fid]; continue; }
     if (!sh || Math.abs(sh.arr - f.arr) > 2 * 60e3) {
-      if (f.arr > now + 30e3 && f.sent && canCancel) { try { await cancel(topic, f.seq); notes.push('cancelled ' + f.seq); } catch (e) { notes.push('cancel failed ' + f.seq); } }
+      if (f.arr > now + 30e3 && f.sent && f.seq && canCancel) { try { await cancel(topic, f.seq); notes.push('cancelled ' + f.seq); } catch (e) { notes.push('cancel failed ' + f.seq); } }
       delete state.flights[fid];
     }
   }
