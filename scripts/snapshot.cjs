@@ -3,6 +3,7 @@ const fs = require('fs'), path = require('path');
 const { opsSnapshot } = require('./collector.cjs');
 const { watch, groupPush } = require('./watchcore.cjs');
 const claims = require('./claims.cjs');
+const shipNotify = require('./shipnotify.cjs');
 const D = path.join(__dirname, '..', 'docs', 'data'); fs.mkdirSync(D, { recursive: true });
 const rd = (f, d) => { try { return JSON.parse(fs.readFileSync(path.join(D, f), 'utf8')); } catch (e) { return d; } };
 const wr = (f, o) => fs.writeFileSync(path.join(D, f), JSON.stringify(o));
@@ -70,4 +71,6 @@ function addAlert(alerts, a, now) {
   wr('latest.json', s); wr('history.json', thin(hist, now)); wr('alerts.json', alerts.slice(0, 80)); wr('meta.json', { t: s.t, px: s.px, bases: Object.fromEntries(s.bases.map(b => [b.p, { upd: new Date(b.upd).getTime(), inv: b.inv }])) });
   console.log('snapshot', new Date(s.t).toISOString(), 'alerts', found.length, 'push', newPush.length);
   for (const t of newPush) await push(t);
+  try { const r = await shipNotify.run(s, rd('shipnotify.json', { flights: {} }), process.env.NTFY_TOPIC, now); wr('shipnotify.json', r.state); (r.notes || []).forEach(n => console.log('shipnotify:', n)); const tn = (r.notes || []).find(n => /^self-test/.test(n)); if (tn) { alerts.unshift({ t: now, level: 'list', kind: 'run', key: 'shipnotify-test-' + now, text: 'Ship messages: ' + (r.canCancel ? 'ntfy can cancel queued messages (stale ones are removed)' : 'ntfy could NOT cancel queued messages here; a changed flight may still send an old time') + ' - ' + tn.slice(0, 120), snapT: now }); wr('alerts.json', alerts.slice(0, 80)); } }
+  catch (e) { console.log('shipnotify failed:', e.message); }
 })().catch(e => { console.error(e); process.exit(1); });
