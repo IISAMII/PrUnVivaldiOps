@@ -74,6 +74,9 @@ function addAlert(alerts, a, now) {
   if (!(hist[0] && sig(hist[0]) === sig(s) && s.t - hist[0].t < 3 * HR)) hist.unshift(lean(s, keepBook));
   delete s.cashFio;
   { const tr = rd('trades.json', []), seen = new Set(tr.map(t => t.id)); let add = 0; for (const t of (s.trades || [])) if (!seen.has(t.id)) { tr.push(t); add++; } if (add || !tr.length) wr('trades.json', tr.sort((a, b) => a.ts - b.ts)); }
+  { // freshness log: when FIO last saw each store, every snapshot, kept 3 days (to see what FIO receives while the game is open but the PC is locked)
+    const fl = rd('freshlog.json', []).filter(x => x.t > now - 3 * DAY), f = s.fresh || {};
+    fl.push({ t: s.t, ships: Object.fromEntries(Object.entries(f.ships || {}).map(([r, v]) => [r, [v.f, v.c]])), bases: f.bases || {}, wh: f.wh || null }); wr('freshlog.json', fl); }
   wr('latest.json', s); wr('history.json', thin(hist, now)); wr('alerts.json', alerts.slice(0, 80)); wr('meta.json', { t: s.t, px: s.px, bases: Object.fromEntries(s.bases.map(b => [b.p, { upd: new Date(b.upd).getTime(), inv: b.inv }])) });
   console.log('snapshot', new Date(s.t).toISOString(), 'alerts', found.length, 'push', newPush.length);
   for (const t of newPush) await push(t);
