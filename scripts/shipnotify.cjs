@@ -19,7 +19,7 @@ function textOf(sh) {
 }
 const url = (topic, seq) => 'https://ntfy.sh/' + encodeURIComponent(topic) + (seq ? '/' + encodeURIComponent(seq) : '');
 async function schedule(topic, seq, atMs, body) {
-  const r = await fetch(url(topic, seq), { method: 'POST', headers: { Title: 'Vivaldi Ops ship', Priority: 'low', Tags: 'rocket', Delay: String(Math.round(atMs / 1000)) }, body });
+  const r = await fetch(url(topic, seq), { method: 'POST', headers: { Title: 'Vivaldi Ops ship', Priority: /needs the next command|send it on/.test(body) ? 'default' : 'min', Tags: 'rocket', Delay: String(Math.round(atMs / 1000)) }, body });
   return r.status;
 }
 async function cancel(topic, seq) { const r = await fetch(url(topic, seq), { method: 'DELETE' }); return r.status; }
