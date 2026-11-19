@@ -280,7 +280,7 @@ const latestAny = () => st.snaps[0] || null;
 const debt = s => (s.loans || []).reduce((a, l) => a + l.pendingTotal, 0);
 function wipValue(s) { let v = 0; (s.bases || []).forEach(b => (b.lines || []).forEach(l => (l.orders || []).forEach(o => { if (!o.s || o.h || o.e <= s.t) return; const t = Math.min(1, Math.max(0, (s.t - o.s) / (o.d || 1))); const inp = Object.entries(o.i || {}).reduce((a, [k, n]) => a + n * pv7(s.px, k), 0), out = Object.entries(o.o || {}).reduce((a, [k, n]) => a + n * pv7(s.px, k), 0); v += inp * (1 - t) + out * t; }))); return v; }
 const cxlValue = s => (s.orders || []).filter(o => o.s === 'S').reduce((a, o) => a + o.n * pv7(s.px, o.tk), 0);
-const assets = s => { const v = s.val; return v.stock + v.wh + v.ships + v.fuel + v.build + (s.bases && s.bases[0] && s.bases[0].lines ? wipValue(s) : 0) + cxlValue(s); };
+const assets = s => { const v = s.val; return v.stock + v.wh + v.ships + v.fuel + v.build + (s.bases && s.bases[0] && s.bases[0].lines ? wipValue(s) : 0) + cxlValue(s) - ((s.recon && s.recon.adj) || 0); };
 const recipesOf = s => (s && s.recipes) || (st.snaps.find(x => x.recipes) || {}).recipes || [];
 function adjAt(t) { return st.adj.filter(a => a.t <= t).reduce((x, a) => x + a.amt, 0); }
 function cashNum(v) { let x = String(v == null ? '' : v).replace(/[^\d.,]/g, '').replace(/[.,]\d{1,2}$/, ''); return x.replace(/[.,]/g, ''); }
@@ -436,7 +436,7 @@ function viewToday() {
   const w = worth(s), d = debt(s), nextLoan = (s.loans || []).filter(l => l.nextDue).sort((a, b) => a.nextDue - b.nextDue)[0];
   const A = alertsFor(s), now = Date.now();
   const tiles =
-    '<div class="tile"><div class="k">Net worth</div><div class="v">' + (w.full != null ? money(w.full) : money(w.ex)) + '</div><div class="s">' + (w.full != null ? 'including cash ' + money(w.cash.v) + (w.cash.est ? ' (estimate)' : '') : 'excluding cash, enter it below') + '</div></div>' +
+    '<div class="tile"><div class="k">Net worth</div><div class="v">' + (w.full != null ? money(w.full) : money(w.ex)) + '</div><div class="s">' + (w.full != null ? 'including cash ' + money(w.cash.v) + (w.cash.est ? ' (estimate)' : '') : 'excluding cash, enter it below') + (s.recon && s.recon.adj > 50000 ? '<br>' + money(s.recon.adj) + ' of goods counted twice by FIO was removed (ship, warehouse and new sell orders are read at different moments)' : '') + '</div></div>' +
     '<div class="tile"><div class="k">Debt</div><div class="v">' + money(d) + '</div><div class="s">' + (s.loans || []).length + ' loans, 0% so far</div></div>' +
     '<div class="tile"><div class="k">Next payment</div><div class="v">' + (nextLoan ? money(nextLoan.inst) : '–') + '</div><div class="s">' + (nextLoan ? fmtDT(nextLoan.nextDue) : 'none due') + '</div></div>' +
     '<div class="tile"><div class="k">Open CX orders</div><div class="v">' + (s.orders || []).length + '</div><div class="s">' + (s.trades || []).length + ' trades in FIO</div></div>';

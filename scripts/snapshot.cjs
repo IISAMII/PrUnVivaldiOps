@@ -7,6 +7,7 @@ const shipNotify = require('./shipnotify.cjs');
 const D = path.join(__dirname, '..', 'docs', 'data'); fs.mkdirSync(D, { recursive: true });
 const rd = (f, d) => { try { return JSON.parse(fs.readFileSync(path.join(D, f), 'utf8')); } catch (e) { return d; } };
 const wr = (f, o) => fs.writeFileSync(path.join(D, f), JSON.stringify(o));
+const { reconcile } = require('./recon.cjs');
 const HR = 36e5, DAY = 864e5, USER = 'II_SAM';
 const ams = t => new Date(t).toLocaleDateString('sv-SE', { timeZone: 'Europe/Amsterdam' });
 const amsH = t => +new Date(t).toLocaleString('en-GB', { timeZone: 'Europe/Amsterdam', hour: '2-digit', hourCycle: 'h23' });
@@ -62,6 +63,7 @@ function addAlert(alerts, a, now) {
   newPush = groupPush(newPush, alerts, now);
   // history
   const hist = rd('history.json', []).filter(x => x.t !== s.t);
+  { const rc = reconcile(s, hist.slice().sort((a, b) => b.t - a.t)); if (rc) { s.recon = rc; console.log('recon: counted twice', rc.adj, rc.items.join('; ')); } }
   const day = ams(s.t); const keepBook = !hist.some(x => x.book && ams(x.t) === day);
   // only keep a new history point when FIO data changed (or 3 h passed); FIO updates only when Sam opens things in the game
   const sig = x => JSON.stringify([(x.bases || []).map(b => [b.p, new Date(b.upd).getTime()]), (x.ships || []).map(h => [h.r, h.arr, h.cargo])]);
