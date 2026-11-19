@@ -28,25 +28,43 @@ async function listing(topic, q) {
   return { s: r.status, text };
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-// One-off phone check: three test messages (now/normal, +60 s/normal, +60 s/low-priority silent), to see which ones reach the phone.
+// One-off check (about 3 min): (1) five importance levels, delayed 60 s; (2) four ways to cancel a queued message.
 async function selfTest(topic, now) {
-  const out = { v: 5, t: now, ok: false, cancel: false };
-  const send = async (title, body, pri, delayMs) => {
-    const h = { Title: title, Priority: pri, Tags: 'test_tube' };
+  const id = now.toString(36), out = { v: 6, t: now, ok: false, cancel: false, pri: {}, var: {} };
+  const post = async (path, title, body, pri, delayMs, extra) => {
+    const h = Object.assign({ Title: title, Priority: pri, Tags: 'test_tube' }, extra || {});
     if (delayMs) h.Delay = String(Math.round((now + delayMs) / 1000));
-    try { return (await fetch(url(topic), { method: 'POST', headers: h, body })).status; } catch (e) { return String(e.message).slice(0, 40); }
+    try { const r = await fetch(url(topic) + path, { method: 'POST', headers: h, body }); let j = {}; try { j = await r.json(); } catch (e) {} return { s: r.status, id: j.id }; } catch (e) { return { s: String(e.message).slice(0, 40) }; }
   };
-  out.now = await send('Vivaldi Ops test 1 of 3', 'Sent immediately, normal priority', 'default', 0);
-  out.norm = await send('Vivaldi Ops test 2 of 3', 'Delayed 1 min, normal priority', 'default', 60e3);
-  out.low = await send('Vivaldi Ops test 3 of 3', 'Delayed 1 min, low priority (silent like ship messages)', 'low', 60e3);
-  out.ok = out.now === 200 && out.norm === 200 && out.low === 200;
+  try {
+    const names = { 1: 'min', 2: 'low', 3: 'default', 4: 'high', 5: 'urgent' };
+    for (const p of [1, 2, 3, 4, 5]) out.pri[p] = (await post('', 'Importance ' + p + ' of 5 (' + names[p] + ')', 'Test, priority ' + p + ', delayed 1 min', p, 60e3)).s;
+    const V = {
+      pathSeq: async () => { const q = 'cx-a-' + id; const r = await post('/' + q, 'Cancel test A', 'cancel A ' + id + ' (should NOT arrive)', 'low', 60e3); const d = await fetch(url(topic) + '/' + q, { method: 'DELETE' }); return { post: r.s, del: d.status }; },
+      headerSeq: async () => { const q = 'cx-b-' + id; const r = await post('', 'Cancel test B', 'cancel B ' + id + ' (should NOT arrive)', 'low', 60e3, { 'X-Sequence-ID': q }); const d = await fetch(url(topic) + '/' + q, { method: 'DELETE' }); return { post: r.s, del: d.status }; },
+      msgId: async () => { const r = await post('', 'Cancel test C', 'cancel C ' + id + ' (should NOT arrive)', 'low', 60e3); const d = r.id ? await fetch(url(topic) + '/' + r.id, { method: 'DELETE' }) : { status: 'noid' }; return { post: r.s, del: d.status }; },
+      clearFlag: async () => { const q = 'cx-d-' + id; const r = await post('/' + q, 'Cancel test D', 'cancel D ' + id + ' (should NOT arrive)', 'low', 60e3); const d = await fetch(url(topic) + '/' + q + '/clear', { method: 'PUT' }); return { post: r.s, del: d.status }; }
+    };
+    for (const k of Object.keys(V)) out.var[k] = await V[k]();
+    out.ok = true;
+    await sleep(100e3);
+    const late = await listing(topic, 'since=all');
+    const lines = late.text.split('\n').filter(Boolean).map(l => { try { return JSON.parse(l); } catch (e) { return {}; } });
+    const tag = { pathSeq: 'cancel A ', headerSeq: 'cancel B ', msgId: 'cancel C ', clearFlag: 'cancel D ' };
+    for (const k of Object.keys(V)) {
+      V[k].arrived = lines.some(m => m.event === 'message' && (m.message || '').includes(tag[k] + id));
+      V[k].events = lines.filter(m => (m.message || '').includes(tag[k] + id) || (m.sequence_id || '').startsWith('cx-' + 'abcd'['pathSeq headerSeq msgId clearFlag'.split(' ').indexOf(k)] + '-' + id)).map(m => m.event).join(',');
+    }
+    out.cancel = Object.values(out.var).some(v => v.arrived === false);
+    out.works = Object.keys(out.var).filter(k => out.var[k].arrived === false);
+  } catch (e) { out.err = String(e.message).slice(0, 80); }
   return out;
 }
 async function run(s, state, topic, now, log) {
   state = state || { flights: {} }; state.flights = state.flights || {};
   if (!topic) return { state, note: 'no topic' };
   const notes = [];
-  if (!state.test || state.test.v !== 5) { state.test = await selfTest(topic, now); notes.push('self-test ' + JSON.stringify(state.test)); console.log('shipnotify selftest', JSON.stringify(state.test)); }
+  if (!state.test || state.test.v !== 6) { state.test = await selfTest(topic, now); notes.push('self-test ' + JSON.stringify(state.test)); console.log('shipnotify selftest', JSON.stringify(state.test)); }
   const canCancel = !!(state.test && state.test.cancel);
   const live = {};
   for (const sh of s.ships || []) if (sh.fid && sh.arr) live[sh.fid] = sh;
