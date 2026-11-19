@@ -1,4 +1,4 @@
-// Phone messages (ntfy) for ship arrivals: silent for plain arrivals, normal priority where a command is needed. Each flight's arrival time is fixed in FIO, so the message is queued on the ntfy server
+// Phone messages (ntfy) for ship arrivals: all at normal (default) priority. Each flight's arrival time is fixed in FIO, so the message is queued on the ntfy server
 // for that moment (Delay header); the next snapshot re-checks it and cancels it if the flight changed or is gone. Messages carry a sequence id so they can be cancelled.
 const HR = 36e5;
 const shortId = r => String(r || '').replace(/^AVI-/, '');
@@ -19,7 +19,7 @@ function textOf(sh) {
 }
 const url = (topic, seq) => 'https://ntfy.sh/' + encodeURIComponent(topic) + (seq ? '/' + encodeURIComponent(seq) : '');
 async function schedule(topic, seq, atMs, body) {
-  const r = await fetch(url(topic, seq), { method: 'POST', headers: { Title: 'Vivaldi Ops ship', Priority: /needs the next command|send it on/.test(body) ? 'default' : 'min', Tags: 'rocket', Delay: String(Math.round(atMs / 1000)) }, body });
+  const r = await fetch(url(topic, seq), { method: 'POST', headers: { Title: 'Vivaldi Ops ship', Priority: 'default', Tags: 'rocket', Delay: String(Math.round(atMs / 1000)) }, body });
   return r.status;
 }
 async function cancel(topic, seq) { const r = await fetch(url(topic, seq), { method: 'DELETE' }); return r.status; }
