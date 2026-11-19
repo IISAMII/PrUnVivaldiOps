@@ -25,23 +25,24 @@ async function schedule(topic, seq, atMs, body) {
 async function cancel(topic, seq) { const r = await fetch(url(topic, seq), { method: 'DELETE' }); return r.status; }
 async function listing(topic, q) {
   const r = await fetch(url(topic) + '/json?poll=1&' + q); const text = r.ok ? await r.text() : '';
-  return { s: r.status, lines: text.split('\n').filter(Boolean), text };
+  return { s: r.status, text };
 }
-const flag = (l, seq) => ({ s: l.s, n: l.lines.length, has: l.text.includes(seq), ev: l.lines.filter(x => x.includes(seq)).map(x => (x.match(/"event":"([a-z_]+)"/) || [])[1]).join(',') });
-// One-off check whether this ntfy server accepts a sequence id, really queues the message (not delivered at once) and cancels it.
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+// One-off check (about 2 minutes): queue two messages 90 s ahead, cancel one, wait, and see which one is delivered, and that neither came at once.
 async function selfTest(topic, now) {
-  const seq = 'selftest-' + now.toString(36), out = { v: 3, t: now, ok: false, cancel: false };
+  const id = now.toString(36), out = { v: 4, t: now, ok: false, cancel: false };
+  const A = 'selftest keep ' + id, B = 'selftest cancel ' + id;
   try {
-    out.post = await schedule(topic, seq, now + 3 * HR, 'Test only, cancelled right away');
-    if (out.post !== 200) return out;
+    out.postA = await schedule(topic, 'selftest-a-' + id, now + 90e3, A);
+    out.postB = await schedule(topic, 'selftest-b-' + id, now + 90e3, B);
+    if (out.postA !== 200 || out.postB !== 200) return out;
     out.ok = true;
-    out.delivered = flag(await listing(topic, 'since=all'), seq);
-    out.sched = flag(await listing(topic, 'since=all&scheduled=1'), seq);
-    const d = await fetch(url(topic, seq), { method: 'DELETE' }); out.del = d.status; out.delBody = typeof d.text === 'function' ? (await d.text()).slice(0, 100) : '';
-    out.schedAfter = flag(await listing(topic, 'since=all&scheduled=1'), seq);
-    out.deliveredAfter = flag(await listing(topic, 'since=all'), seq);
-    out.queued = out.sched.ev.includes('message') && !out.delivered.ev.includes('message');
-    out.cancel = out.del === 200 && /message_delete/.test(out.delBody || 'message_delete');
+    const d = await fetch(url(topic, 'selftest-b-' + id), { method: 'DELETE' }); out.del = d.status;
+    const early = await listing(topic, 'since=all'); out.early = { A: early.text.includes(A), B: early.text.includes(B) };
+    await sleep(110e3);
+    const late = await listing(topic, 'since=all'); out.late = { A: late.text.includes(A), B: late.text.includes(B), s: late.s };
+    out.queued = !out.early.A && !out.early.B;
+    out.cancel = out.queued && out.late.A && !out.late.B;
   } catch (e) { out.err = String(e.message).slice(0, 80); }
   return out;
 }
@@ -49,7 +50,7 @@ async function run(s, state, topic, now, log) {
   state = state || { flights: {} }; state.flights = state.flights || {};
   if (!topic) return { state, note: 'no topic' };
   const notes = [];
-  if (!state.test || state.test.v !== 3 || (!state.test.cancel && now - state.test.t > 12 * HR)) { state.test = await selfTest(topic, now); notes.push('self-test ' + JSON.stringify(state.test)); console.log('shipnotify selftest', JSON.stringify(state.test)); }
+  if (!state.test || state.test.v !== 4 || (!state.test.cancel && now - state.test.t > 12 * HR)) { state.test = await selfTest(topic, now); notes.push('self-test ' + JSON.stringify(state.test)); console.log('shipnotify selftest', JSON.stringify(state.test)); }
   const canCancel = !!(state.test && state.test.cancel);
   const live = {};
   for (const sh of s.ships || []) if (sh.fid && sh.arr) live[sh.fid] = sh;
