@@ -1,7 +1,7 @@
 // Scheduled job: takes a FIO snapshot, runs the watch rules, stores data under docs/data and pushes urgent alerts via ntfy.
 const fs = require('fs'), path = require('path');
 const { opsSnapshot } = require('./collector.cjs');
-const { watch } = require('./watchcore.cjs');
+const { watch, groupPush } = require('./watchcore.cjs');
 const claims = require('./claims.cjs');
 const D = path.join(__dirname, '..', 'docs', 'data'); fs.mkdirSync(D, { recursive: true });
 const rd = (f, d) => { try { return JSON.parse(fs.readFileSync(path.join(D, f), 'utf8')); } catch (e) { return d; } };
@@ -57,7 +57,8 @@ function addAlert(alerts, a, now) {
   for (const [p, c] of Object.entries(csum)) if (c.est != null && c.widthMin <= 60) settings.claim[p] = c.est;
   wr('claimobs.json', store); wr('claims.json', csum);
   const found = watch(s, meta && meta.px ? { px: meta.px } : null, settings, now);
-  for (const a of found) { const rec = { t: s.t, level: a.level, kind: a.kind, key: a.key, text: a.text, snapT: s.t }; if (addAlert(alerts, rec, now) && a.level === 'push') newPush.push(a.text); }
+  for (const a of found) { const rec = { t: s.t, level: a.level, kind: a.kind, key: a.key, text: a.text, snapT: s.t }; if (a.base) rec.base = a.base; if (a.level === 'push' && a.base) { rec.tk = a.tk; rec.ro = a.ro; rec.hrs = a.hrs; } if (addAlert(alerts, rec, now) && a.level === 'push') newPush.push(rec); }
+  newPush = groupPush(newPush, alerts, now);
   // history
   const hist = rd('history.json', []).filter(x => x.t !== s.t);
   const day = ams(s.t); const keepBook = !hist.some(x => x.book && ams(x.t) === day);

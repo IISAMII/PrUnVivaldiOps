@@ -33,7 +33,7 @@ const bid = (px, t) => { const x = px && px[t]; return x ? (x[1] || x[2] || x[0]
 const v7 = (px, t) => { const x = px && px[t]; return x ? (x[2] || x[0] || x[1] || 0) : 0; };
 const fmt = ms => new Date(ms).toLocaleString('en-GB', { timeZone: 'Europe/Amsterdam', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 function watch(s, prev, settings, now) {
-  now = now || Date.now(); const out = [], px = s.px || {}, push = (level, kind, key, text) => out.push({ level, kind, key, text });
+  now = now || Date.now(); const out = [], px = s.px || {}, push = (level, kind, key, text, extra) => out.push(Object.assign({ level, kind, key, text }, extra || {}));
   const demand = {}; (s.bases || []).forEach(b => Object.entries(b.net || {}).forEach(([t, n]) => { if (n < -0.5) demand[t] = true; }));
   (s.bases || []).forEach(b => {
     const age = now - new Date(b.upd).getTime();
@@ -44,7 +44,7 @@ function watch(s, prev, settings, now) {
         const hrs = (r.ro - now) / HR; if (hrs > 24) return;
         const covered = (s.ships || []).some(sh => sh.etaH > 0 && (String(sh.to || '').includes(b.p) || (!/benten/i.test(String(sh.to || '')) && b.nid && String(sh.to || '').includes('(' + b.nid.replace(/[a-z]$/i, '') + ')')) || (/UV-072/.test(String(sh.to || '')) && (b.p === 'Umbra' || b.p === 'Katoa'))) && (sh.cargo || {})[r.t] > 0 && (s.t + sh.etaH * HR) <= r.ro);
         if (covered) return;
-        if (hrs <= 5) { if (age <= 8 * HR) push('push', 'supply', 'supply|' + b.p + '|' + r.t, b.p + ': ' + r.t + ' runs out ' + fmt(r.ro) + (hrs > 0 ? ' (in ' + hrs.toFixed(1) + ' h)' : ' (now)') + ', nothing on the way'); else push('list', 'supply', 'supply|' + b.p + '|' + r.t, b.p + ': ' + r.t + ' may run out ' + fmt(r.ro) + ', but the base data is ' + Math.round(age / HR) + ' h old'); }
+        if (hrs <= 5) { if (age <= 8 * HR) push('push', 'supply', 'supply|' + b.p + '|' + r.t, b.p + ': ' + r.t + ' runs out ' + fmt(r.ro) + (hrs > 0 ? ' (in ' + hrs.toFixed(1) + ' h)' : ' (now)') + ', nothing on the way', { base: b.p, tk: r.t, ro: r.ro, hrs }); else push('list', 'supply', 'supply|' + b.p + '|' + r.t, b.p + ': ' + r.t + ' may run out ' + fmt(r.ro) + ', but the base data is ' + Math.round(age / HR) + ' h old'); }
         else soon.push(r.t + ' ' + hrs.toFixed(0) + ' h');
       });
       if (soon.length) push('list', 'supply', 'supply24|' + b.p, b.p + ' needs supply within a day: ' + soon.slice(0, 5).join(', '));
@@ -67,4 +67,17 @@ function watch(s, prev, settings, now) {
   const oldest = Math.max(...(s.bases || []).map(b => now - new Date(b.upd).getTime()), 0); if (oldest > 12 * HR) push('list', 'stale', 'stale', 'Base data is up to ' + Math.round(oldest / HR) + ' h old: open your bases in the game so supply checks are reliable.');
   return out;
 }
-if (typeof module !== 'undefined') module.exports = { watch, runoutsOf };
+// One phone message per base: several resources of the same base that run out together (or within 12 h of an earlier message for that base) are not sent separately.
+function groupPush(newRecs, alerts, now) {
+  const msgs = [], by = {};
+  newRecs.forEach(a => { if (a.kind === 'supply' && a.base) (by[a.base] = by[a.base] || []).push(a); else msgs.push(a.text); });
+  Object.entries(by).forEach(([base, L]) => {
+    if ((alerts || []).some(x => x.pushed && x.kind === 'supply' && x.base === base && now - x.t < 12 * HR)) { L.forEach(a => { a.level = 'list'; }); return; }
+    L.forEach(a => { a.pushed = true; });
+    if (L.length === 1) { msgs.push(L[0].text); return; }
+    const g = {}; L.sort((x, y) => x.ro - y.ro).forEach(a => { const k = fmt(a.ro) + '|' + (a.hrs > 0 ? '(in ' + a.hrs.toFixed(1) + ' h)' : '(now)'); (g[k] = g[k] || []).push(a.tk); });
+    msgs.push(base + ': ' + Object.entries(g).map(([k, t]) => { const [w, h] = k.split('|'); return t.join(', ') + ' run out ' + w + ' ' + h; }).join('; ') + ', nothing on the way');
+  });
+  return msgs;
+}
+if (typeof module !== 'undefined') module.exports = { watch, runoutsOf, groupPush };
