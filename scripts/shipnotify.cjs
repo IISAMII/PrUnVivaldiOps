@@ -28,29 +28,25 @@ async function listing(topic, q) {
   return { s: r.status, text };
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-// One-off check (about 2 minutes): queue two messages 90 s ahead, cancel one, wait, and see which one is delivered, and that neither came at once.
+// One-off phone check: three test messages (now/normal, +60 s/normal, +60 s/low-priority silent), to see which ones reach the phone.
 async function selfTest(topic, now) {
-  const id = now.toString(36), out = { v: 4, t: now, ok: false, cancel: false };
-  const A = 'selftest keep ' + id, B = 'selftest cancel ' + id;
-  try {
-    out.postA = await schedule(topic, 'selftest-a-' + id, now + 90e3, A);
-    out.postB = await schedule(topic, 'selftest-b-' + id, now + 90e3, B);
-    if (out.postA !== 200 || out.postB !== 200) return out;
-    out.ok = true;
-    const d = await fetch(url(topic, 'selftest-b-' + id), { method: 'DELETE' }); out.del = d.status;
-    const early = await listing(topic, 'since=all'); out.early = { A: early.text.includes(A), B: early.text.includes(B) };
-    await sleep(110e3);
-    const late = await listing(topic, 'since=all'); out.late = { A: late.text.includes(A), B: late.text.includes(B), s: late.s };
-    out.queued = !out.early.A && !out.early.B;
-    out.cancel = out.queued && out.late.A && !out.late.B;
-  } catch (e) { out.err = String(e.message).slice(0, 80); }
+  const out = { v: 5, t: now, ok: false, cancel: false };
+  const send = async (title, body, pri, delayMs) => {
+    const h = { Title: title, Priority: pri, Tags: 'test_tube' };
+    if (delayMs) h.Delay = String(Math.round((now + delayMs) / 1000));
+    try { return (await fetch(url(topic), { method: 'POST', headers: h, body })).status; } catch (e) { return String(e.message).slice(0, 40); }
+  };
+  out.now = await send('Vivaldi Ops test 1 of 3', 'Sent immediately, normal priority', 'default', 0);
+  out.norm = await send('Vivaldi Ops test 2 of 3', 'Delayed 1 min, normal priority', 'default', 60e3);
+  out.low = await send('Vivaldi Ops test 3 of 3', 'Delayed 1 min, low priority (silent like ship messages)', 'low', 60e3);
+  out.ok = out.now === 200 && out.norm === 200 && out.low === 200;
   return out;
 }
 async function run(s, state, topic, now, log) {
   state = state || { flights: {} }; state.flights = state.flights || {};
   if (!topic) return { state, note: 'no topic' };
   const notes = [];
-  if (!state.test || state.test.v !== 4) { state.test = await selfTest(topic, now); notes.push('self-test ' + JSON.stringify(state.test)); console.log('shipnotify selftest', JSON.stringify(state.test)); }
+  if (!state.test || state.test.v !== 5) { state.test = await selfTest(topic, now); notes.push('self-test ' + JSON.stringify(state.test)); console.log('shipnotify selftest', JSON.stringify(state.test)); }
   const canCancel = !!(state.test && state.test.cancel);
   const live = {};
   for (const sh of s.ships || []) if (sh.fid && sh.arr) live[sh.fid] = sh;
