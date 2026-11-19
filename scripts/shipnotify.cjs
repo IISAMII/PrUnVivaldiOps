@@ -50,7 +50,7 @@ async function run(s, state, topic, now, log) {
   state = state || { flights: {} }; state.flights = state.flights || {};
   if (!topic) return { state, note: 'no topic' };
   const notes = [];
-  if (!state.test || state.test.v !== 4 || (!state.test.cancel && now - state.test.t > 12 * HR)) { state.test = await selfTest(topic, now); notes.push('self-test ' + JSON.stringify(state.test)); console.log('shipnotify selftest', JSON.stringify(state.test)); }
+  if (!state.test || state.test.v !== 4) { state.test = await selfTest(topic, now); notes.push('self-test ' + JSON.stringify(state.test)); console.log('shipnotify selftest', JSON.stringify(state.test)); }
   const canCancel = !!(state.test && state.test.cancel);
   const live = {};
   for (const sh of s.ships || []) if (sh.fid && sh.arr) live[sh.fid] = sh;
