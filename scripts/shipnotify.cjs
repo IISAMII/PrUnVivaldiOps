@@ -28,35 +28,30 @@ async function listing(topic, q) {
   return { s: r.status, text };
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-// One-off check (about 3 min): (1) five importance levels, delayed 60 s; (2) four ways to cancel a queued message.
+// One-off check (about 3 min): cancel per the ntfy docs, with a pause before cancelling.
 async function selfTest(topic, now) {
-  const id = now.toString(36), out = { v: 6, t: now, ok: false, cancel: false, pri: {}, var: {} };
-  const post = async (path, title, body, pri, delayMs, extra) => {
-    const h = Object.assign({ Title: title, Priority: pri, Tags: 'test_tube' }, extra || {});
-    if (delayMs) h.Delay = String(Math.round((now + delayMs) / 1000));
-    try { const r = await fetch(url(topic) + path, { method: 'POST', headers: h, body }); let j = {}; try { j = await r.json(); } catch (e) {} return { s: r.status, id: j.id }; } catch (e) { return { s: String(e.message).slice(0, 40) }; }
-  };
+  const id = now.toString(36), out = { v: 7, t: now, ok: false, cancel: false, var: {} };
+  const post = async (q, body, delayS) => { try { const r = await fetch(url(topic) + '/' + q, { method: 'POST', headers: { Title: 'Cancel test (should NOT arrive)', Priority: 'min', Tags: 'test_tube', Delay: String(delayS) }, body }); return r.status; } catch (e) { return String(e.message).slice(0, 40); } };
   try {
-    const names = { 1: 'min', 2: 'low', 3: 'default', 4: 'high', 5: 'urgent' };
-    for (const p of [1, 2, 3, 4, 5]) out.pri[p] = (await post('', 'Importance ' + p + ' of 5 (' + names[p] + ')', 'Test, priority ' + p + ', delayed 1 min', p, 60e3)).s;
-    const V = {
-      pathSeq: async () => { const q = 'cx-a-' + id; const r = await post('/' + q, 'Cancel test A', 'cancel A ' + id + ' (should NOT arrive)', 'low', 60e3); const d = await fetch(url(topic) + '/' + q, { method: 'DELETE' }); return { post: r.s, del: d.status }; },
-      headerSeq: async () => { const q = 'cx-b-' + id; const r = await post('', 'Cancel test B', 'cancel B ' + id + ' (should NOT arrive)', 'low', 60e3, { 'X-Sequence-ID': q }); const d = await fetch(url(topic) + '/' + q, { method: 'DELETE' }); return { post: r.s, del: d.status }; },
-      msgId: async () => { const r = await post('', 'Cancel test C', 'cancel C ' + id + ' (should NOT arrive)', 'low', 60e3); const d = r.id ? await fetch(url(topic) + '/' + r.id, { method: 'DELETE' }) : { status: 'noid' }; return { post: r.s, del: d.status }; },
-      clearFlag: async () => { const q = 'cx-d-' + id; const r = await post('/' + q, 'Cancel test D', 'cancel D ' + id + ' (should NOT arrive)', 'low', 60e3); const d = await fetch(url(topic) + '/' + q + '/clear', { method: 'PUT' }); return { post: r.s, del: d.status }; }
-    };
-    for (const k of Object.keys(V)) out.var[k] = await V[k]();
+    const t0 = Math.round(Date.now() / 1000), at = t0 + 90;
+    const names = { del: 'cd-a-', get: 'cd-b-', upd: 'cd-c-' };
+    for (const k of Object.keys(names)) out.var[k] = { post: await post(names[k] + id, 'cancel ' + k + ' ' + id, at) };
+    await sleep(8e3);
+    const g = u => fetch(url(topic) + '/' + u, { method: 'GET' }).then(r => r.status).catch(e => String(e.message).slice(0, 30));
+    out.var.del.res = await fetch(url(topic) + '/' + names.del + id, { method: 'DELETE' }).then(r => r.status);
+    out.var.get.res = await g(names.get + id + '/delete');
+    out.var.upd.res = await post(names.upd + id, 'cancel upd ' + id + ' REPLACED (late)', t0 + 3 * 86400 - 600);
     out.ok = true;
-    await sleep(100e3);
+    await sleep(110e3);
     const late = await listing(topic, 'since=all');
     const lines = late.text.split('\n').filter(Boolean).map(l => { try { return JSON.parse(l); } catch (e) { return {}; } });
-    const tag = { pathSeq: 'cancel A ', headerSeq: 'cancel B ', msgId: 'cancel C ', clearFlag: 'cancel D ' };
-    for (const k of Object.keys(V)) {
-      V[k].arrived = lines.some(m => m.event === 'message' && (m.message || '').includes(tag[k] + id));
-      V[k].events = lines.filter(m => (m.message || '').includes(tag[k] + id) || (m.sequence_id || '').startsWith('cx-' + 'abcd'['pathSeq headerSeq msgId clearFlag'.split(' ').indexOf(k)] + '-' + id)).map(m => m.event).join(',');
+    for (const k of Object.keys(names)) {
+      const mine = lines.filter(m => (m.message || '').includes('cancel ' + k + ' ' + id) || (m.sequence_id || '') === names[k] + id);
+      out.var[k].events = mine.map(m => m.event + (m.message ? ':msg' : '')).join(',');
+      out.var[k].arrived = mine.some(m => m.event === 'message');
     }
-    out.cancel = Object.values(out.var).some(v => v.arrived === false);
-    out.works = Object.keys(out.var).filter(k => out.var[k].arrived === false);
+    out.works = Object.keys(names).filter(k => out.var[k].arrived === false);
+    out.cancel = out.works.length > 0;
   } catch (e) { out.err = String(e.message).slice(0, 80); }
   return out;
 }
@@ -64,7 +59,7 @@ async function run(s, state, topic, now, log) {
   state = state || { flights: {} }; state.flights = state.flights || {};
   if (!topic) return { state, note: 'no topic' };
   const notes = [];
-  if (!state.test || state.test.v !== 6) { state.test = await selfTest(topic, now); notes.push('self-test ' + JSON.stringify(state.test)); console.log('shipnotify selftest', JSON.stringify(state.test)); }
+  if (!state.test || state.test.v !== 7) { state.test = await selfTest(topic, now); notes.push('self-test ' + JSON.stringify(state.test)); console.log('shipnotify selftest', JSON.stringify(state.test)); }
   const canCancel = !!(state.test && state.test.cancel);
   const live = {};
   for (const sh of s.ships || []) if (sh.fid && sh.arr) live[sh.fid] = sh;
