@@ -49,6 +49,10 @@ async function run(s, state, topic, now, log) {
   if (!topic) return { state, note: 'no topic' };
   const notes = [];
   if (!state.test || state.test.v !== 8 && state.test.v !== 7) { state.test = await selfTest(topic, now); notes.push('self-test ' + JSON.stringify(state.test)); console.log('shipnotify selftest', JSON.stringify(state.test)); }
+  if (state.dbgv !== 1) { // one-off read-only look at what ntfy.sh holds (delivered and still scheduled)
+    state.dbgv = 1; state.dbg = {};
+    for (const q of ['since=all', 'since=all&scheduled=1']) { try { const r = await listing(topic, q); state.dbg[q] = { s: r.s, msgs: r.text.split('\n').filter(Boolean).map(l => { try { return JSON.parse(l); } catch (e) { return {}; } }).filter(m => m.event === 'message' || m.event === 'message_delete').slice(-14).map(m => ({ ev: m.event, t: m.time, exp: m.expires, p: m.priority, txt: (m.message || m.sequence_id || '').slice(0, 60) })) }; } catch (e) { state.dbg[q] = String(e.message).slice(0, 60); } }
+  }
   const canCancel = !!(state.test && state.test.cancel);
   const live = {};
   for (const sh of s.ships || []) if (sh.fid && sh.arr) live[sh.fid] = sh;
