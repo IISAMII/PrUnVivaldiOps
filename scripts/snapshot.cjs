@@ -8,6 +8,7 @@ const D = path.join(__dirname, '..', 'docs', 'data'); fs.mkdirSync(D, { recursiv
 const rd = (f, d) => { try { return JSON.parse(fs.readFileSync(path.join(D, f), 'utf8')); } catch (e) { return d; } };
 const wr = (f, o) => fs.writeFileSync(path.join(D, f), JSON.stringify(o));
 const { reconcile } = require('./recon.cjs');
+const poprTrack = require('./popr.cjs');
 const HR = 36e5, DAY = 864e5, USER = 'II_SAM';
 const ams = t => new Date(t).toLocaleDateString('sv-SE', { timeZone: 'Europe/Amsterdam' });
 const amsH = t => +new Date(t).toLocaleString('en-GB', { timeZone: 'Europe/Amsterdam', hour: '2-digit', hourCycle: 'h23' });
@@ -54,7 +55,10 @@ function addAlert(alerts, a, now) {
   const settings0 = rd('settings.json', {});
   // worker claim times seen in the stock changes between FIO readings
   const store = claims.update(rd('claimobs.json', {}), meta && meta.bases, s.bases);
-  const csum = claims.summary(store);
+  let popr = rd('popr.json', {}); try { const pr = await poprTrack.run(s, popr); popr = pr.state; pr.notes.forEach(n => console.log('popr:', n)); wr('popr.json', popr); } catch (e) { console.log('popr failed', e.message); }
+  const dr = claims.detectResets(meta && meta.bases, s.bases, rd('claimreset.json', {}), popr); wr('claimreset.json', dr.resets);
+  for (const n of dr.notes) addAlert(alerts, { t: s.t, level: 'list', kind: 'claim', key: 'claimreset-' + n.p + '-' + n.t, text: n.p + ': more workers arrived (worker need ' + Math.round(n.from) + ' to ' + Math.round(n.to) + (n.popr ? ', with the weekly population report' : ', not at a population report') + '). Claim time is measured again.', snapT: s.t }, now);
+  const csum = claims.summary(store, dr.resets, popr);
   const settings = Object.assign({}, settings0, { claim: Object.assign({}, settings0.claim) });
   for (const [p, c] of Object.entries(csum)) if (c.est != null && c.widthMin <= 60) settings.claim[p] = c.est;
   wr('claimobs.json', store); wr('claims.json', csum);

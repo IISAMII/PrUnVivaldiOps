@@ -28,5 +28,35 @@ function update(store, prevBases, bases) {
   for (const b of bases) { const p = prevBases && prevBases[b.p], cu = new Date(b.upd).getTime(); if (!p || !(cu > p.upd) || !b.inv) continue; const k = observe(p, b); if (k === null) continue; const list = out[b.p] = out[b.p] || []; if (!list.some(o => o.a === p.upd && o.b === cu)) list.push({ a: p.upd, b: cu, k }); out[b.p] = list.filter(o => o.b > Date.now() - 60 * DAY).slice(-300); }
   return out;
 }
-function summary(store) { const r = {}; for (const [p, list] of Object.entries(store)) r[p] = estimate(list); return r; }
-module.exports = { observe, update, summary, estimate };
+// Workers start claiming when consumables become available to them: when new workers arrive (reserve top-up or the weekly POPR redistribution).
+// Bases that were fully staffed from the start keep their time. So a worker increase resets the claim time: older observations are dropped and the
+// time is measured again. resets[p] = { t (ms, only windows starting at or after t count), from, to (worker need sums), popr (bool), poprTod (UTC hours or null) }.
+const wsum = b => Object.values(b.wf || {}).reduce((a, x) => a + x, 0);
+const WEEK = 7 * DAY;
+function detectResets(prevBases, bases, resets, popr) {
+  const out = Object.assign({}, resets || {}), notes = [];
+  for (const b of bases) {
+    const p = prevBases && prevBases[b.p], cu = new Date(b.upd).getTime(); if (!p || !(cu > p.upd) || !b.wf || !p.wf) continue;
+    const w0 = wsum(p), w1 = wsum(b); if (!(w1 > w0 * 1.02 + 0.5)) continue;
+    const pr = popr && popr[b.p]; let isPopr = false, tod = null;
+    if (pr && pr.ts) { tod = (pr.ts % DAY) / 36e5; const k = Math.ceil((p.upd - pr.ts) / WEEK); for (let i = k - 1; i <= k + 1; i++) { const t = pr.ts + i * WEEK; if (t > p.upd - 30 * MIN && t <= cu + 30 * MIN) isPopr = true; } }
+    out[b.p] = { t: cu, from: Math.round(w0 * 10) / 10, to: Math.round(w1 * 10) / 10, popr: isPopr, poprTod: tod };
+    notes.push({ p: b.p, from: w0, to: w1, popr: isPopr, t: cu });
+  }
+  return { resets: out, notes };
+}
+function summary(store, resets, popr) {
+  const r = {};
+  for (const [p, list0] of Object.entries(store)) {
+    const rs = resets && resets[p], list = rs ? list0.filter(o => o.a >= rs.t) : list0, e = estimate(list);
+    if (rs) { e.resetT = rs.t; e.afterReset = list.filter(o => o.k).length; }
+    const tod = popr && popr[p] && popr[p].ts ? (popr[p].ts % DAY) / 36e5 : (rs && rs.poprTod);
+    // nothing seen since the reset yet: if the reset came with the weekly redistribution the claim is expected at the report time of day
+    if (rs && rs.popr && tod != null && (e.est == null || e.widthMin > 60) && !e.conflict) { e.est = tod + 1 / 60; e.widthMin = 60; e.prov = true; }
+    // measured: when the report time of day lies inside the measured window after a redistribution, the claim is at the report time
+    else if (e.est != null && e.widthMin <= 60 && tod != null && rs && rs.popr && e.arcs.length === 1 && (tod * 60 + 1) >= e.arcs[0][0] && (tod * 60 + 1) <= e.arcs[0][1] + 1) e.est = tod + 1 / 60;
+    r[p] = e;
+  }
+  return r;
+}
+module.exports = { observe, update, summary, estimate, detectResets };
