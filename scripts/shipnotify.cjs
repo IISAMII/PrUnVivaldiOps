@@ -50,9 +50,9 @@ async function run(s, state, topic, now, log) {
   const notes = [];
   if (!state.test || state.test.v !== 8 && state.test.v !== 7) { state.test = await selfTest(topic, now); notes.push('self-test ' + JSON.stringify(state.test)); console.log('shipnotify selftest', JSON.stringify(state.test)); }
   if (state.cleanv !== 1) { state.cleanv = 1; try { state.clean = await cancel(topic, 'cd-c-mwndnl0b'); } catch (e) { state.clean = 'err'; } } // remove the leftover test message queued for 22 Nov
-  if (state.dbgv !== 1) { // one-off read-only look at what ntfy.sh holds (delivered and still scheduled)
-    state.dbgv = 1; state.dbg = {};
-    for (const q of ['since=all', 'since=all&scheduled=1']) { try { const r = await listing(topic, q); state.dbg[q] = { s: r.s, msgs: r.text.split('\n').filter(Boolean).map(l => { try { return JSON.parse(l); } catch (e) { return {}; } }).filter(m => m.event === 'message' || m.event === 'message_delete').slice(-14).map(m => ({ ev: m.event, t: m.time, exp: m.expires, p: m.priority, txt: (m.message || m.sequence_id || '').slice(0, 60) })) }; } catch (e) { state.dbg[q] = String(e.message).slice(0, 60); } }
+  if (state.dbgv !== 2) { // one-off read-only look at what ntfy.sh holds (delivered and still scheduled)
+    state.dbgv = 2; state.dbg = {};
+    for (const q of ['since=all', 'since=all&scheduled=1']) { try { const r = await listing(topic, q); state.dbg[q] = { s: r.s, msgs: r.text.split('\n').filter(Boolean).map(l => { try { return JSON.parse(l); } catch (e) { return {}; } }).filter(m => m.event === 'message' || m.event === 'message_delete').slice(-20).map(m => ({ ev: m.event, t: m.time, seq: (m.sequence_id || '').slice(0, 26), exp: m.expires, p: m.priority, txt: (m.message || m.sequence_id || '').slice(0, 60) })) }; } catch (e) { state.dbg[q] = String(e.message).slice(0, 60); } }
   }
   const canCancel = !!(state.test && state.test.cancel);
   const live = {};
